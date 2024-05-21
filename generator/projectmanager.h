@@ -25,6 +25,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
+#include <unordered_set>
+#include <fstream>
+
 
 struct ProjectInfo
 {
@@ -62,12 +66,16 @@ struct ProjectInfo
     {
     }
 };
+#include <ostream>
+#include <llvm/Support/raw_ostream.h>
 
 struct ProjectManager
 {
     explicit ProjectManager(std::string outputPrefix, std::string _dataPath);
 
     bool addProject(ProjectInfo info);
+
+    void createDir();
 
     std::vector<ProjectInfo> projects;
 
@@ -81,10 +89,73 @@ struct ProjectManager
     // 'project' is the value returned by projectForFile
     bool shouldProcess(llvm::StringRef filename, ProjectInfo *project);
 
-    std::string includeRecovery(llvm::StringRef includeName, llvm::StringRef from);
+    //std::string includeRecovery(llvm::StringRef includeName, llvm::StringRef from);
+    //
+    class FileIndex {
+    	public:
+		FileIndex(const std::string &p)
+			: path_(p), ofs_(p, std::ios::app) {
+				//ofs_.open(p, std::ios::app);
+				assert(ofs_.is_open());
+			}
+		FileIndex(const FileIndex&) = delete;
+		void AppendLine_Locked(const std::string& s) {
+			std::lock_guard lg(mutex_);
+			ofs_<<s << '\n';
+		}
+		private:
+		std::mutex mutex_;
+		std::string path_;
+		std::ofstream ofs_;
+    };
+    class RefFile {
+    	public:
+		RefFile(const std::string &p);
+		RefFile(const FileIndex&) = delete;
+		void AppendLine_Locked(const std::string& s) {
+			std::lock_guard lg(mutex_);
+			ofs_<<s << '\n';
+		}
+		private:
+		std::mutex mutex_;
+		static inline thread_local std::error_code error_code;
+		std::string path_;
+		//std::ofstream ofs_;
+		llvm::raw_fd_ostream ofs_;
+    };
+
+    RefFile& GetRefFile(const std::string& s) {
+		std::lock_guard lg(mutex_);
+		auto [itr, _] = ref_files.try_emplace(s, s);
+		return itr->second;
+    }
+    RefFile& GetFuncIndexFile(const std::string& s) {
+		std::lock_guard lg(mutex_);
+		auto [itr, _] = func_index_files.try_emplace(s, s);
+		return itr->second;
+    }
+	void AddFileIndex(const std::string &s) {
+		file_index_.AppendLine_Locked(s);
+	}
 
 private:
     static std::vector<ProjectInfo> systemProjects();
+    bool hasFile_Locked(const std::string& file) {
+		std::lock_guard lg(mutex_);
+		return exists_files_.count(file);
+    }
+    bool addFile_Locked(const std::string& file) {
+		std::lock_guard lg(mutex_);
+		auto [_, suc] = exists_files_.insert(file);
+		return suc;
+    }
 
+	std::mutex mutex_;
+	std::unordered_set<std::string> exists_files_;
     std::unordered_multimap<std::string, std::string> includeRecoveryCache;
+
+    FileIndex file_index_;
+	std::unordered_map<std::string, RefFile> ref_files;
+	std::unordered_map<std::string, RefFile> func_index_files;
+
 };

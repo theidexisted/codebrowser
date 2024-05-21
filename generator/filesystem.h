@@ -24,7 +24,7 @@
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/FileSystem.h>
-
+#include <llvm/Support/Process.h>
 #include <system_error>
 
 namespace llvm {
@@ -42,3 +42,19 @@ std::string naive_uncomplete(llvm::StringRef base, llvm::StringRef path);
 void make_forward_slashes(char *str);
 void make_forward_slashes(std::string &str);
 void replace_invalid_filename_chars(std::string &str);
+
+
+inline static std::string getFileIndexSuffix() {
+
+#if CLANG_VERSION_MAJOR >= 16
+    		static const std::string mp_suffix =
+        		llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").value_or("");
+#else
+    		static const std::string mp_suffix =
+        		llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").getValueOr("");
+#endif
+
+	return mp_suffix;
+
+}
+

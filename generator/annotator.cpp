@@ -117,6 +117,22 @@ ssize_t getFieldOffset(const clang::Decl *decl)
 }
 
 }
+Annotator::Annotator(ProjectManager &pm)
+        : projectManager(pm)
+{
+}
+
+auto& Annotator::GetRefFile(const std::string& s) {
+  return projectManager.GetRefFile(s);
+}
+auto& Annotator::GetFuncIndexFile(const std::string& s) {
+  return projectManager.GetFuncIndexFile(s);
+}
+
+void Annotator::AddFileIndex(const std::string &s){
+  projectManager.AddFileIndex(s);
+}
+
 
 Annotator::~Annotator()
 {
@@ -241,27 +257,11 @@ void Annotator::registerInterestingDefinition(clang::SourceRange sourceRange,
     set.insert(declName);
 }
 
+
 bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 {
-#if CLANG_VERSION_MAJOR >= 16
-    static const std::string mp_suffix =
-        llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").value_or("");
-#else
-    static const std::string mp_suffix =
-        llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").getValueOr("");
-#endif
 
-    std::ofstream fileIndex;
-    fileIndex.open(projectManager.outputPrefix + "/fileIndex" + mp_suffix, std::ios::app);
-    if (!fileIndex) {
-        create_directories(projectManager.outputPrefix);
-        fileIndex.open(projectManager.outputPrefix + "/fileIndex" + mp_suffix, std::ios::app);
-        if (!fileIndex) {
-            std::cerr << "Can't generate index for " << std::endl;
-            return false;
-        }
-    }
-
+	auto mp_suffix = getFileIndexSuffix();
     // make sure the main file is in the cache.
     htmlNameForFile(getSourceMgr().getMainFileID());
 
@@ -332,7 +332,7 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 #endif
 
         if (projectinfo.type == ProjectInfo::Normal)
-            fileIndex << fn << '\n';
+            AddFileIndex(fn);
     }
 
     // make sure all the docs are in the references
@@ -340,7 +340,6 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
     for (auto it : commentHandler.docs)
         references[it.first];
 
-    create_directories(llvm::Twine(projectManager.outputPrefix, "/refs/_M"));
     for (const auto &it : references) {
         if (llvm::StringRef(it.first).startswith("__builtin"))
             continue;
@@ -351,26 +350,9 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
         replace_invalid_filename_chars(refFilename);
 
         std::string filename = projectManager.outputPrefix % "/refs/" % refFilename % mp_suffix;
-#if CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR <= 5
-        std::string error;
-        llvm::raw_fd_ostream myfile(filename.c_str(), error, llvm::sys::fs::F_Append);
-        if (!error.empty()) {
-            std::cerr << error << std::endl;
-            continue;
-        }
-#else
-        std::error_code error_code;
-#if CLANG_VERSION_MAJOR >= 13
-        llvm::raw_fd_ostream myfile(filename, error_code, llvm::sys::fs::OF_Append);
-#else
-        llvm::raw_fd_ostream myfile(filename, error_code, llvm::sys::fs::F_Append);
-#endif
-        if (error_code) {
-            std::cerr << "Error writing ref file " << filename << ": " << error_code.message()
-                      << std::endl;
-            continue;
-        }
-#endif
+		auto& myfile0 = GetRefFile(filename);
+		std::string bindstr;
+		llvm::raw_string_ostream myfile(bindstr);
         for (const auto &it2 : it.second) {
             clang::SourceRange loc = it2.loc;
             clang::SourceManager &sm = getSourceMgr();
@@ -420,6 +402,7 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
             case Inherit:
                 tag = "inh";
             }
+
             myfile << "<" << tag << " f='";
             Generator::escapeAttr(myfile, fn);
             myfile << "' l='" << fixedBegin.getLine() << "'";
@@ -485,10 +468,10 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
                 myfile << "/>\n";
             }
         }
+    	myfile0.AppendLine_Locked(myfile.str());
     }
 
     // now the function names
-    create_directories(llvm::Twine(projectManager.outputPrefix, "/fnSearch"));
     for (auto &fnIt : functionIndex) {
         auto fnName = fnIt.first;
         if (fnName.size() < 4)
@@ -519,31 +502,13 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
             if (saved.find(idxRef) == std::string::npos) {
                 std::string funcIndexFN =
                     projectManager.outputPrefix % "/fnSearch/" % idx % mp_suffix;
-#if CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR <= 5
-                std::string error;
-                llvm::raw_fd_ostream funcIndexFile(funcIndexFN.c_str(), error,
-                                                   llvm::sys::fs::F_Append);
-                if (!error.empty()) {
-                    std::cerr << error << std::endl;
-                    return false;
-                }
-#else
-                std::error_code error_code;
-#if CLANG_VERSION_MAJOR >= 13
-                llvm::raw_fd_ostream funcIndexFile(funcIndexFN, error_code,
-                                                   llvm::sys::fs::OF_Append);
-#else
-                llvm::raw_fd_ostream funcIndexFile(funcIndexFN, error_code,
-                                                   llvm::sys::fs::F_Append);
-#endif
 
-                if (error_code) {
-                    std::cerr << "Error writing index file " << funcIndexFN << ": "
-                              << error_code.message() << std::endl;
-                    continue;
-                }
-#endif
-                funcIndexFile << fnIt.second << '|' << fnIt.first << '\n';
+				std::string bindStr;
+				llvm::raw_string_ostream indexFile(bindStr);
+                indexFile << fnIt.second << '|' << fnIt.first << '\n';
+
+				auto& funcIndexFile = GetFuncIndexFile(funcIndexFN);
+				funcIndexFile.AppendLine_Locked(indexFile.str());
                 saved.append(idxRef); // include \0;
             }
         }
@@ -1356,3 +1321,6 @@ Annotator::getDesignatorInlayHints(clang::InitListExpr *Syn)
     InlayHintsAnnotatorHelper helper(this);
     return helper.getDesignatorInlayHints(Syn);
 }
+
+
+

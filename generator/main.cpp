@@ -44,6 +44,7 @@
 #include <stdexcept>
 
 #include "embedded_includes.h"
+#include "threadpool.h"
 
 namespace cl = llvm::cl;
 
@@ -270,8 +271,13 @@ std::set<std::string> BrowserAction::processed;
 ProjectManager *BrowserAction::projectManager = nullptr;
 
 static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
-                           llvm::StringRef file, clang::FileManager *FM, DatabaseType WasInDatabase)
+                           llvm::StringRef file,  DatabaseType WasInDatabase)
 {
+    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
+        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+    clang::FileManager FM({ "." }, VFS);
+
+    FM.Retain();
     // This code change all the paths to be absolute paths
     //  FIXME:  it is a bit fragile.
     bool previousIsDashI = false;
@@ -334,7 +340,7 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
-    clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)), FM);
+    clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)), &FM);
 
 #if CLANG_VERSION_MAJOR <= 10
     if (!hasNoStdInc) {
@@ -357,6 +363,7 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
 int main(int argc, const char **argv)
 {
+	ThreadPool thread_pool;
     std::string ErrorMessage;
     std::unique_ptr<clang::tooling::CompilationDatabase> Compilations(
         clang::tooling::FixedCompilationDatabase::loadFromCommandLine(argc, argv
@@ -557,7 +564,7 @@ int main(int argc, const char **argv)
             std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
                       << "\n";
             proceedCommand(compileCommandsForFile.front().CommandLine,
-                           compileCommandsForFile.front().Directory, file, &FM,
+                           compileCommandsForFile.front().Directory, file,
                            IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
                                                     : DatabaseType::InDatabase);
         } else {
@@ -609,15 +616,20 @@ int main(int argc, const char **argv)
                 command.push_back("-include");
                 command.push_back(llvm::StringRef(file).substr(0, file.size() - 5) % ".h");
             }
-            success = proceedCommand(std::move(command), compileCommandsForFile.front().Directory,
-                                     file, &FM,
-                                     IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
-                                                              : DatabaseType::NotInDatabase);
+			
+
+			auto dir = compileCommandsForFile.front().Directory;
+			auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
+                                                              : DatabaseType::NotInDatabase;
+            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp](){proceedCommand(std::move(command), dir,
+                                     file, tp);
+                    });
         } else {
             std::cerr << "Could not find commands for " << file << "\n";
         }
 
         if (!success && !IsProcessingAllDirectory) {
+            std::cerr << "Run into !success && !IsProcessingAllDirectory" << "\n";
             ProjectInfo *projectinfo = projectManager.projectForFile(file);
             if (!projectinfo)
                 continue;

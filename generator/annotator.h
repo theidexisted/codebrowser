@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <fstream>
 
 struct ProjectManager;
 struct ProjectInfo;
@@ -97,6 +98,7 @@ public:
         EnumDecl,
         Label
     };
+   	//using RefFile=FileIndex;
 
 private:
     enum class Visibility {
@@ -159,10 +161,12 @@ private:
     void syntaxHighlight(Generator &generator, clang::FileID FID, clang::Sema &);
 
 public:
-    explicit Annotator(ProjectManager &pm)
-        : projectManager(pm)
+    explicit Annotator(ProjectManager &pm);
+    	/*
+        : projectManager(pm), file_index_(pm.outputPrefix + "/fileIndex" + getFileIndexSuffix())
     {
     }
+    */
     ~Annotator();
 
     ProjectManager &projectManager;
@@ -251,6 +255,10 @@ public:
     std::string getVisibleRef(clang::NamedDecl *Decl);
 
     std::string externalProjectForFile(clang::FileID fid);
+    auto& GetRefFile(const std::string& s) ;
+    auto& GetFuncIndexFile(const std::string& s) ;
+	void AddFileIndex(const std::string &s); 
+
 
     /**
      * Returns the param name in function decl for the arg @p arg

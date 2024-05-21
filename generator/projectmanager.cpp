@@ -31,6 +31,7 @@
 ProjectManager::ProjectManager(std::string outputPrefix, std::string _dataPath)
     : outputPrefix(std::move(outputPrefix))
     , dataPath(std::move(_dataPath))
+       , file_index_(outputPrefix + "/fileIndex" + getFileIndexSuffix())
 {
     if (dataPath.empty())
         dataPath = "../data";
@@ -38,6 +39,7 @@ ProjectManager::ProjectManager(std::string outputPrefix, std::string _dataPath)
     for (auto &&info : systemProjects()) {
         addProject(info);
     }
+    createDir();
 }
 
 bool ProjectManager::addProject(ProjectInfo info)
@@ -74,6 +76,7 @@ ProjectInfo *ProjectManager::projectForFile(llvm::StringRef filename)
     return result;
 }
 
+//TODO find the corresponding entry for create file
 bool ProjectManager::shouldProcess(llvm::StringRef filename, ProjectInfo *project)
 {
     if (!project)
@@ -83,71 +86,25 @@ bool ProjectManager::shouldProcess(llvm::StringRef filename, ProjectInfo *projec
 
     std::string fn = outputPrefix % "/" % project->name % "/"
         % filename.substr(project->source_path.size()) % ".html";
-    return !llvm::sys::fs::exists(fn);
+    return hasFile_Locked(fn);
+    //return !llvm::sys::fs::exists(fn);
     // || boost::filesystem::last_write_time(p) < entry->getModificationTime();
 }
 
-std::string ProjectManager::includeRecovery(llvm::StringRef includeName, llvm::StringRef from)
+
+void ProjectManager::createDir()
 {
-#if CLANG_VERSION_MAJOR != 3 || CLANG_VERSION_MINOR >= 5
-    if (includeRecoveryCache.empty()) {
-        for (const auto &proj : projects) {
-            // skip sub project
-            llvm::StringRef sourcePath(proj.source_path);
-            auto parentPath = sourcePath.substr(0, sourcePath.rfind('/'));
-            if (projectForFile(parentPath))
-                continue;
-
-            std::error_code EC;
-            for (llvm::sys::fs::recursive_directory_iterator it(sourcePath, EC), DirEnd;
-                 it != DirEnd && !EC; it.increment(EC)) {
-                auto fileName = llvm::sys::path::filename(it->path());
-                if (fileName.startswith(".")) {
-                    it.no_push();
-                    continue;
-                }
-                includeRecoveryCache.insert({ std::string(fileName), it->path() });
-            }
-        }
-    }
-    llvm::StringRef includeFileName = llvm::sys::path::filename(includeName);
-    std::string resolved;
-    int weight = -1000;
-    auto range = includeRecoveryCache.equal_range(std::string(includeFileName));
-    for (auto it = range.first; it != range.second; ++it) {
-        llvm::StringRef candidate(it->second);
-        unsigned int suf_len = 0;
-        while (suf_len < std::min(candidate.size(), includeName.size())) {
-            if (candidate[candidate.size() - suf_len - 1]
-                != includeName[includeName.size() - suf_len - 1])
-                break;
-            suf_len++;
-        }
-        // Each paths part that are similar from the expected name are weighted 1000 points f
-        int w = includeName.substr(includeName.size() - suf_len).count('/') * 1000;
-        if (w + 1000 < weight)
-            continue;
-
-        // after that, order by similarity with the from url
-        unsigned int pref_len = 0;
-        while (pref_len < std::min(candidate.size(), from.size())) {
-            if (candidate[pref_len] != from[pref_len])
-                break;
-            pref_len++;
-        }
-        w += candidate.substr(0, pref_len).count('/') * 10;
-
-        // and the smaller the path, the better
-        w -= candidate.count('/');
-
-        if (w < weight)
-            continue;
-
-        weight = w;
-        resolved = std::string(candidate);
-    }
-    return resolved;
-#else
-    return {}; // Not supported with clang < 3.4
-#endif
+	auto e = create_directories(outputPrefix);
+	assert(!e);
+    e = create_directories(llvm::Twine(outputPrefix, "/refs/_M"));
+	assert(!e);
+    e = create_directories(llvm::Twine(outputPrefix, "/fnSearch"));
+	assert(!e);
 }
+
+ProjectManager::RefFile::RefFile(const std::string &p)
+	: path_(p), ofs_(p, error_code, llvm::sys::fs::OF_Append) {
+				assert(!ofs_.has_error());
+			}
+
+
