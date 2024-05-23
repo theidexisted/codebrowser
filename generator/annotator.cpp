@@ -53,6 +53,10 @@
 #include "inlayhintannotator.h"
 #include "projectmanager.h"
 #include "stringbuilder.h"
+#include "spdlog/spdlog.h"
+#include "spdlog/fmt/fmt.h"
+#include "spdlog/fmt/ranges.h"
+
 
 namespace {
 
@@ -120,12 +124,15 @@ ssize_t getFieldOffset(const clang::Decl *decl)
 Annotator::Annotator(ProjectManager &pm)
         : projectManager(pm)
 {
+		SPDLOG_DEBUG("Annotator constructor");
 }
 
 auto& Annotator::GetRefFile(const std::string& s) {
+	SPDLOG_DEBUG("Get reference file:{}", s);
   return projectManager.GetRefFile(s);
 }
 auto& Annotator::GetFuncIndexFile(const std::string& s) {
+	SPDLOG_DEBUG("Get function index file:{}", s);
   return projectManager.GetFuncIndexFile(s);
 }
 
@@ -257,6 +264,24 @@ void Annotator::registerInterestingDefinition(clang::SourceRange sourceRange,
     set.insert(declName);
 }
 
+#include <iomanip>
+#include <chrono>
+
+std::string getCurrentDate() {
+    // Get the current time point
+    auto now = std::chrono::system_clock::now();
+
+    // Convert the current time point to a time_t object
+    std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
+
+    // Convert the time_t object to a std::tm struct in UTC timezone
+    std::tm* localTime = std::localtime(&currentTime);
+
+    // Format the date
+    std::ostringstream oss;
+    oss << std::put_time(localTime, "%Y-%b-%d");
+    return oss.str();
+}
 
 bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 {
@@ -278,6 +303,7 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
             projectManager.projects.cbegin(), projectManager.projects.cend(),
             [&fn](const ProjectInfo &it) { return llvm::StringRef(fn).startswith(it.name); });
         if (project_it == projectManager.projects.cend()) {
+			spdlog::error("GENERATION ERROR: {} not in a project", fn);
             std::cerr << "GENERATION ERROR: " << fn << " not in a project" << std::endl;
             continue;
         }
@@ -296,14 +322,9 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
                 % htmlNameForFile(mainFID) % "</a><br/>";
         }
 
-        auto now = time(0);
-        auto tm = localtime(&now);
-        char buf[80];
-        strftime(buf, sizeof(buf), "%Y-%b-%d", tm);
-
         const ProjectInfo &projectinfo = *project_it;
         footer %=
-            "Generated on <em>" % std::string(buf) % "</em>" % " from project " % projectinfo.name;
+            "Generated on <em>" % getCurrentDate() % "</em>" % " from project " % projectinfo.name;
         if (!projectinfo.revision.empty())
             footer %= " revision <em>" % projectinfo.revision % "</em>";
 

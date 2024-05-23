@@ -26,6 +26,7 @@
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Process.h>
 #include <system_error>
+#include "logger.h"
 
 namespace llvm {
 class Twine;

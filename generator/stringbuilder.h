@@ -1,6 +1,7 @@
 #include <cstring>
 #include <string>
 
+#include "logger.h"
 template<typename T>
 struct string_builder_helper;
 

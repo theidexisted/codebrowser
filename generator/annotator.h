@@ -31,6 +31,7 @@
 #include <unordered_map>
 #include <vector>
 #include <fstream>
+#include "logger.h"
 
 struct ProjectManager;
 struct ProjectInfo;

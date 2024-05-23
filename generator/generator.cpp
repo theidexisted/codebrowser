@@ -32,6 +32,9 @@
 #include <llvm/ADT/StringExtras.h>
 #include <clang/Basic/Version.h>
 
+#include "spdlog/spdlog.h"
+#include "spdlog/fmt/fmt.h"
+#include "spdlog/fmt/ranges.h"
 template<int N>
 static void bufferAppend(llvm::SmallVectorImpl<char> &buffer, const char (&val)[N]) {
     buffer.append(val, val + N - 1);
@@ -119,6 +122,7 @@ void Generator::generate(llvm::StringRef outputPrefix, std::string dataPath, con
                          const std::set<std::string> &interestingDefinitions)
 {
     std::string real_filename = outputPrefix % "/" % filename % ".html";
+    SPDLOG_DEBUG("generate file with real_filename: {}", real_filename);
     // Make sure the parent directory exist:
     create_directories(llvm::StringRef(real_filename).rsplit('/').first);
 
@@ -138,6 +142,7 @@ void Generator::generate(llvm::StringRef outputPrefix, std::string dataPath, con
     llvm::raw_fd_ostream myfile(real_filename, error_code, llvm::sys::fs::F_None);
 #endif
     if (error_code) {
+    	spdlog::error("Error generating real_filename: {}", real_filename);
         std::cerr << "Error generating " << real_filename << " ";
         std::cerr << error_code.message() << std::endl;
         return;
@@ -302,4 +307,5 @@ void Generator::generate(llvm::StringRef outputPrefix, std::string dataPath, con
 
     myfile << "<br />Powered by <a href='https://woboq.com'><img alt='Woboq' src='https://code.woboq.org/woboq-16.png' width='41' height='16' /></a> <a href='https://code.woboq.org'>Code Browser</a> "
               CODEBROWSER_VERSION "\n<br/>Generator usage only permitted with license.</p>\n</div></body></html>\n";
+    SPDLOG_DEBUG("Finished generate file with real_filename: {}", real_filename);
 }

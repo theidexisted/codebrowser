@@ -4,6 +4,7 @@ project(codebrowser LANGUAGES CXX)
 include(GNUInstallDirs)
 set (CMAKE_CXX_STANDARD 20)
 
+
 add_subdirectory(generator)
 add_subdirectory(indexgenerator)
 

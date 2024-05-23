@@ -29,6 +29,7 @@
 #include <unordered_set>
 #include <fstream>
 
+#include "logger.h"
 
 struct ProjectInfo
 {
@@ -88,20 +89,21 @@ struct ProjectManager
     // return true if the filename should be proesseded.
     // 'project' is the value returned by projectForFile
     bool shouldProcess(llvm::StringRef filename, ProjectInfo *project);
+    bool shouldProcess0(llvm::StringRef filename, ProjectInfo *project);
 
     //std::string includeRecovery(llvm::StringRef includeName, llvm::StringRef from);
     //
+    struct DirCreator {
+		DirCreator(const std::string& d);
+    };
     class FileIndex {
     	public:
-		FileIndex(const std::string &p)
-			: path_(p), ofs_(p, std::ios::app) {
-				//ofs_.open(p, std::ios::app);
-				assert(ofs_.is_open());
-			}
+		FileIndex(const std::string &p);
 		FileIndex(const FileIndex&) = delete;
+		//FileIndex(FileIndex&&) = default;
 		void AppendLine_Locked(const std::string& s) {
 			std::lock_guard lg(mutex_);
-			ofs_<<s << '\n';
+			ofs_<<s;
 		}
 		private:
 		std::mutex mutex_;
@@ -114,7 +116,7 @@ struct ProjectManager
 		RefFile(const FileIndex&) = delete;
 		void AppendLine_Locked(const std::string& s) {
 			std::lock_guard lg(mutex_);
-			ofs_<<s << '\n';
+			ofs_<<s;
 		}
 		private:
 		std::mutex mutex_;
@@ -140,16 +142,18 @@ struct ProjectManager
 
 private:
     static std::vector<ProjectInfo> systemProjects();
+    /*
     bool hasFile_Locked(const std::string& file) {
 		std::lock_guard lg(mutex_);
 		return exists_files_.count(file);
     }
+    */
     bool addFile_Locked(const std::string& file) {
 		std::lock_guard lg(mutex_);
 		auto [_, suc] = exists_files_.insert(file);
 		return suc;
     }
-
+	DirCreator dir_creator_;
 	std::mutex mutex_;
 	std::unordered_set<std::string> exists_files_;
     std::unordered_multimap<std::string, std::string> includeRecoveryCache;

@@ -28,6 +28,7 @@
 #if CLANG_VERSION_MAJOR == 15
 #include <llvm/ADT/Optional.h>
 #endif
+#include "logger.h"
 
 namespace clang {
 class Preprocessor;

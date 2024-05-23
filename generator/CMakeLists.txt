@@ -3,11 +3,20 @@ project(codebrowser_generator)
 
 cmake_policy(SET CMP0057 NEW)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS_DEBUG_INIT "-O0")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS_RELEASE_INIT "-O3")
+endif()
+
 Find_Package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} in ${LLVM_INSTALL_PREFIX}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 Find_Package(Clang REQUIRED CONFIG HINTS "${LLVM_INSTALL_PREFIX}/lib/cmake/clang")
 message(STATUS "Found Clang in ${CLANG_INSTALL_PREFIX}")
+
+find_package(spdlog CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED)
 
 add_executable(codebrowser_generator main.cpp projectmanager.cpp annotator.cpp generator.cpp preprocessorcallback.cpp
                filesystem.cpp qtsupport.cpp commenthandler.cpp ${CMAKE_CURRENT_BINARY_DIR}/projectmanager_systemprojects.cpp
@@ -29,8 +38,10 @@ else()
     target_link_libraries(codebrowser_generator PRIVATE clang-cpp)
 endif()
 
+#target_link_libraries(codebrowser_generator PRIVATE spdlog::spdlog )
+target_link_libraries(codebrowser_generator PRIVATE spdlog::spdlog_header_only)
 if(TARGET LLVM)
-  target_link_libraries(codebrowser_generator PRIVATE LLVM)
+  target_link_libraries(codebrowser_generator PRIVATE LLVM )
 else()
   # We cannot use llvm_config() here because in some versions it uses PRIVATE when calling target_link_libraries
   # and in some it doesn't. If our calls of target_link_libraries don't do it the same way, we get a
@@ -64,7 +75,9 @@ configure_file(projectmanager_systemprojects.cpp.in projectmanager_systemproject
 
 if(NOT MSVC)
 # Flags not supported by MSVC
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=thread -g3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti ")
 
 # TODO: Split up files and insert them row by row because
 # MSVC only accepts strings of 2^16 bytes length (~65kb)

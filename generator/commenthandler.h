@@ -24,6 +24,7 @@
 #include <clang/Basic/SourceLocation.h>
 #include <map>
 #include <string>
+#include "logger.h"
 
 class Annotator;
 namespace clang {

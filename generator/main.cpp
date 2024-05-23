@@ -19,7 +19,6 @@
  * purchasing a commercial licence.
  ****************************************************************************/
 
-
 #include "clang/AST/ASTContext.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/JSONCompilationDatabase.h"
@@ -45,6 +44,7 @@
 
 #include "embedded_includes.h"
 #include "threadpool.h"
+#include "logger.h"
 
 namespace cl = llvm::cl;
 
@@ -173,6 +173,7 @@ public:
         , annotator(projectManager)
         , WasInDatabase(WasInDatabase)
     {
+		SPDLOG_DEBUG("BrowserASTConsumer constructor");
         // ci.getLangOpts().DelayedTemplateParsing = (true);
 #if CLANG_VERSION_MAJOR < 16
         // the meaning of this function has changed which causes
@@ -182,6 +183,7 @@ public:
     }
     virtual ~BrowserASTConsumer()
     {
+		SPDLOG_DEBUG("BrowserASTConsumer destructor");
         ci.getDiagnostics().setClient(new clang::IgnoringDiagConsumer, true);
     }
 
@@ -198,6 +200,7 @@ public:
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef D) override
     {
         if (ci.getDiagnostics().hasFatalErrorOccurred()) {
+			SPDLOG_DEBUG("Reset errors: (Hack to ignore the fatal errors.)");
             // Reset errors: (Hack to ignore the fatal errors.)
             ci.getDiagnostics().Reset();
             // When there was fatal error, processing the warnings may cause crashes
@@ -215,7 +218,9 @@ public:
 
 
         BrowserASTVisitor v(annotator);
+		SPDLOG_DEBUG("Create BrowserASTVisitor");
         v.TraverseDecl(Ctx.getTranslationUnitDecl());
+		SPDLOG_DEBUG("TraverseDecl done");
 
 
         annotator.generate(ci.getSema(), WasInDatabase != DatabaseType::NotInDatabase);
@@ -230,9 +235,25 @@ public:
     }
 };
 
+class ProcessedSet {
+	public:
+		bool try_insert(const std::string& s) {
+			std::lock_guard lg(mutex_);
+			auto [_,suc] = processed_.insert(s);
+			return suc;
+		}
+		static ProcessedSet& get() {
+			static ProcessedSet inst;
+			return inst;
+		}
+	private:
+		std::mutex mutex_;
+    	std::set<std::string> processed_;
+};
+
 class BrowserAction : public clang::ASTFrontendAction
 {
-    static std::set<std::string> processed;
+    //static std::set<std::string> processed;
     DatabaseType WasInDatabase;
 
 protected:
@@ -243,11 +264,13 @@ protected:
 #endif
     CreateASTConsumer(clang::CompilerInstance &CI, llvm::StringRef InFile) override
     {
-        if (processed.count(InFile.str())) {
+		SPDLOG_DEBUG("Start CreateASTConsumer for:{}", InFile.str());
+        //if (processed.count(InFile.str())) {
+        if(!ProcessedSet::get().try_insert(InFile.str())) {
+			SPDLOG_ERROR("Skipping already processed:{}", InFile.str());
             std::cerr << "Skipping already processed " << InFile.str() << std::endl;
             return nullptr;
         }
-        processed.insert(InFile.str());
 
         CI.getFrontendOpts().SkipFunctionBodies = true;
 
@@ -258,6 +281,7 @@ public:
     BrowserAction(DatabaseType WasInDatabase = DatabaseType::InDatabase)
         : WasInDatabase(WasInDatabase)
     {
+		SPDLOG_DEBUG("BrowserAction constructor");
     }
     virtual bool hasCodeCompletionSupport() const override
     {
@@ -267,12 +291,13 @@ public:
 };
 
 
-std::set<std::string> BrowserAction::processed;
+//std::set<std::string> BrowserAction::processed;
 ProjectManager *BrowserAction::projectManager = nullptr;
 
 static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
                            llvm::StringRef file,  DatabaseType WasInDatabase)
 {
+	SPDLOG_DEBUG("Start proceedCommand with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
     llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
         new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
     clang::FileManager FM({ "." }, VFS);
@@ -340,10 +365,12 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
+	SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
     clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)), &FM);
 
 #if CLANG_VERSION_MAJOR <= 10
     if (!hasNoStdInc) {
+    	SPDLOG_DEBUG("hasNoStdInc, Map the builtins includes");
         // Map the builtins includes
         const EmbeddedFile *f = EmbeddedFiles;
         while (f->filename) {
@@ -355,15 +382,25 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
     bool result = Inv.run();
     if (!result) {
+		SPDLOG_ERROR("Error: The file was not recognized as source code: : {}", file.str());
         std::cerr << "Error: The file was not recognized as source code: " << file.str()
                   << std::endl;
     }
     return result;
 }
+#include "spdlog/sinks/basic_file_sink.h"
 
 int main(int argc, const char **argv)
 {
-	ThreadPool thread_pool;
+	auto file_logger = spdlog::basic_logger_mt("codebrowser", "/tmp/codebrowserlog.txt");
+	file_logger->flush_on(spdlog::level::trace);
+	spdlog::set_default_logger(file_logger);
+	spdlog::set_pattern("%T[%t][file: %s][fun: %!][line: %#] %v");
+
+
+	spdlog::set_level(spdlog::level::trace);
+	//spdlog::flush_every(std::chrono::seconds(1));
+	SPDLOG_INFO("Start");
     std::string ErrorMessage;
     std::unique_ptr<clang::tooling::CompilationDatabase> Compilations(
         clang::tooling::FixedCompilationDatabase::loadFromCommandLine(argc, argv
@@ -384,7 +421,9 @@ int main(int argc, const char **argv)
 #endif
 
     ProjectManager projectManager(OutputPath, DataPath);
+	ThreadPool thread_pool;
     for (std::string &s : ProjectPaths) {
+    	SPDLOG_DEBUG("Try one project path:{}", s);
         auto colonPos = s.find(':');
         if (colonPos >= s.size()) {
             std::cerr << "fail to parse project option : " << s << std::endl;
@@ -400,6 +439,7 @@ int main(int argc, const char **argv)
         }
     }
     for (std::string &s : ExternalProjectPaths) {
+    	SPDLOG_DEBUG("Try one external project path:{}", s);
         auto colonPos = s.find(':');
         if (colonPos >= s.size()) {
             std::cerr << "fail to parse project option : " << s << std::endl;
@@ -422,10 +462,13 @@ int main(int argc, const char **argv)
 
 
     if (!Compilations && llvm::sys::fs::exists(BuildPath)) {
+    	SPDLOG_DEBUG("!Compilations && llvm::sys::fs::exists(BuildPath):{}", BuildPath);
         if (llvm::sys::fs::is_directory(BuildPath)) {
+			SPDLOG_DEBUG("Build path is directory:{}, add to compilation database", BuildPath);
             Compilations = std::unique_ptr<clang::tooling::CompilationDatabase>(
                 clang::tooling::CompilationDatabase::loadFromDirectory(BuildPath, ErrorMessage));
         } else {
+			SPDLOG_DEBUG("Build path is not directory:{}, load from file", BuildPath);
             Compilations = std::unique_ptr<clang::tooling::CompilationDatabase>(
                 clang::tooling::JSONCompilationDatabase::loadFromFile(
                     BuildPath, ErrorMessage
@@ -441,6 +484,7 @@ int main(int argc, const char **argv)
     }
 
     if (!Compilations) {
+		SPDLOG_ERROR("Could not load compilationdatabase, exit");
         std::cerr
             << "Could not load compilationdatabase. "
                "Please use the -b option to a path containing a compile_commands.json, or use "
@@ -455,12 +499,14 @@ int main(int argc, const char **argv)
     std::sort(AllFiles.begin(), AllFiles.end());
     llvm::ArrayRef<std::string> Sources = SourcePaths;
     if (Sources.empty() && ProcessAllSources) {
+		SPDLOG_ERROR("Will process all files");
         // Because else the order is too random
         Sources = AllFiles;
     } else if (ProcessAllSources) {
         std::cerr << "Cannot use both sources and  '-a'" << std::endl;
         return EXIT_FAILURE;
     } else if (Sources.size() == 1 && llvm::sys::fs::is_directory(Sources.front())) {
+		SPDLOG_DEBUG("Iterator through the directory: {}", Sources.front());
 #if CLANG_VERSION_MAJOR != 3 || CLANG_VERSION_MINOR >= 5
         // A directory was passed, process all the files in that directory
         llvm::SmallString<128> DirName;
@@ -534,7 +580,9 @@ int main(int argc, const char **argv)
     std::vector<std::string> NotInDB;
 
     for (const auto &it : Sources) {
+		SPDLOG_DEBUG("Prepare work for source: {}", it);
         std::string file = clang::tooling::getAbsolutePath(it);
+		SPDLOG_DEBUG("Absolute file path: {}", file);
         Progress++;
 
         if (it.empty() || it == "-")
@@ -544,12 +592,15 @@ int main(int argc, const char **argv)
         canonicalize(file, filename);
 
         if (auto project = projectManager.projectForFile(filename)) {
-            if (!projectManager.shouldProcess(filename, project)) {
+			SPDLOG_DEBUG("The project for file: {}, {}", filename.c_str(), project->name);
+            if (!projectManager.shouldProcess0(filename, project)) {
+				SPDLOG_ERROR("Sources: Skipping already processed : {}", filename.c_str());
                 std::cerr << "Sources: Skipping already processed " << filename.c_str()
                           << std::endl;
                 continue;
             }
         } else {
+			SPDLOG_ERROR("Sources: Skipping file not included by any project : {}", filename.c_str());
             std::cerr << "Sources: Skipping file not included by any project " << filename.c_str()
                       << std::endl;
             continue;
@@ -559,15 +610,22 @@ int main(int argc, const char **argv)
                             .Cases(".h", ".H", ".hh", ".hpp", true)
                             .Default(false);
 
+		SPDLOG_DEBUG("File is header: {}, {}", filename.c_str(), isHeader);
         auto compileCommandsForFile = Compilations->getCompileCommands(file);
         if (!compileCommandsForFile.empty() && !isHeader) {
+			SPDLOG_DEBUG("compileCommandsForFile: {}", compileCommandsForFile.front().CommandLine);
             std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
                       << "\n";
-            proceedCommand(compileCommandsForFile.front().CommandLine,
-                           compileCommandsForFile.front().Directory, file,
-                           IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
-                                                    : DatabaseType::InDatabase);
+            auto command = compileCommandsForFile.front().CommandLine;
+            auto dir = compileCommandsForFile.front().Directory;
+            auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
+                                                    : DatabaseType::InDatabase;
+			thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp](){
+					proceedCommand(std::move(command), dir, file, tp);
+                    		});
+
         } else {
+			SPDLOG_DEBUG("Add delayed file to queue: {}", filename.c_str());
             // TODO: Try to find a command line for a file in the same path
             std::cerr << "Delayed " << file << "\n";
             Progress--;
@@ -576,16 +634,22 @@ int main(int argc, const char **argv)
         }
     }
 
+	SPDLOG_DEBUG("Delayed queue: {}", NotInDB);
     for (const auto &it : NotInDB) {
+		SPDLOG_DEBUG("Start to process delay file from queue: {}", it);
         std::string file = clang::tooling::getAbsolutePath(it);
+		SPDLOG_DEBUG("Absolute file path: {}", file);
         Progress++;
 
         if (auto project = projectManager.projectForFile(file)) {
+			SPDLOG_DEBUG("The project for file: {}, {}", file.c_str(), project->name);
             if (!projectManager.shouldProcess(file, project)) {
+				SPDLOG_ERROR("NotInDB: Skipping already processed : {}", file.c_str());
                 std::cerr << "NotInDB: Skipping already processed " << file.c_str() << std::endl;
                 continue;
             }
         } else {
+			SPDLOG_ERROR("NotInDB: Skipping file not included by any project", file.c_str());
             std::cerr << "NotInDB: Skipping file not included by any project " << file.c_str()
                       << std::endl;
             continue;
@@ -596,6 +660,8 @@ int main(int argc, const char **argv)
         auto compileCommandsForFile = Compilations->getCompileCommands(file);
         std::string fileForCommands = file;
         if (compileCommandsForFile.empty()) {
+			SPDLOG_ERROR("NotInDB: compileCommandsForFile is empty:{}", file.c_str());
+ 
             // Find the element with the bigger prefix
             auto lower = std::lower_bound(AllFiles.cbegin(), AllFiles.cend(), file);
             if (lower == AllFiles.cend())
@@ -609,7 +675,9 @@ int main(int argc, const char **argv)
             std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
                       << "\n";
             auto command = compileCommandsForFile.front().CommandLine;
+			SPDLOG_ERROR("NotInDB: final compileCommandsForFile: {}", command);
             std::replace(command.begin(), command.end(), fileForCommands, it);
+			SPDLOG_ERROR("NotInDB: final after replace compileCommandsForFile: {}", command);
             if (llvm::StringRef(file).endswith(".qdoc")) {
                 command.insert(command.begin() + 1, "-xc++");
                 // include the header for this .qdoc file
@@ -617,17 +685,19 @@ int main(int argc, const char **argv)
                 command.push_back(llvm::StringRef(file).substr(0, file.size() - 5) % ".h");
             }
 			
+			SPDLOG_ERROR("NotInDB: final after pushbacks compileCommandsForFile", command);
 
 			auto dir = compileCommandsForFile.front().Directory;
 			auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
                                                               : DatabaseType::NotInDatabase;
-            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp](){proceedCommand(std::move(command), dir,
+            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp](){proceedCommand(std::move(command), dir,
                                      file, tp);
                     });
         } else {
             std::cerr << "Could not find commands for " << file << "\n";
         }
 
+		SPDLOG_DEBUG("Normal process done");
         if (!success && !IsProcessingAllDirectory) {
             std::cerr << "Run into !success && !IsProcessingAllDirectory" << "\n";
             ProjectInfo *projectinfo = projectManager.projectForFile(file);
@@ -673,4 +743,5 @@ int main(int argc, const char **argv)
             fileIndex << fn << '\n';
         }
     }
+	SPDLOG_DEBUG("All process done");
 }

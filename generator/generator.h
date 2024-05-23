@@ -28,6 +28,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "logger.h"
 namespace llvm {
 class raw_ostream;
 }
