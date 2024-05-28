@@ -22,6 +22,8 @@
 #include "annotator.h"
 #include "filesystem.h"
 #include "generator.h"
+#include <iomanip>
+#include <chrono>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/DeclBase.h>
@@ -264,8 +266,6 @@ void Annotator::registerInterestingDefinition(clang::SourceRange sourceRange,
     set.insert(declName);
 }
 
-#include <iomanip>
-#include <chrono>
 
 std::string getCurrentDate() {
     // Get the current time point
@@ -274,18 +274,17 @@ std::string getCurrentDate() {
     // Convert the current time point to a time_t object
     std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
 
-    // Convert the time_t object to a std::tm struct in UTC timezone
-    std::tm* localTime = std::localtime(&currentTime);
+    std::tm local_tm;
+    localtime_r(&currentTime, &local_tm);
 
     // Format the date
     std::ostringstream oss;
-    oss << std::put_time(localTime, "%Y-%b-%d");
+    oss << std::put_time(&local_tm, "%Y-%b-%d");
     return oss.str();
 }
 
 bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 {
-
 	auto mp_suffix = getFileIndexSuffix();
     // make sure the main file is in the cache.
     htmlNameForFile(getSourceMgr().getMainFileID());
