@@ -45,6 +45,13 @@
 #include "embedded_includes.h"
 #include "threadpool.h"
 #include "logger.h"
+#include "spdlog/sinks/basic_file_sink.h"
+
+//extern "C" void __tsan_on_report() {
+//    // This function will be called whenever a data race is reported.
+//    // Place a breakpoint here.
+//    __builtin_trap();  // Trigger a breakpoint in gdb.
+//}
 
 namespace cl = llvm::cl;
 
@@ -298,11 +305,6 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
                            llvm::StringRef file,  DatabaseType WasInDatabase)
 {
 	SPDLOG_DEBUG("Start proceedCommand with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
-    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
-        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
-    clang::FileManager FM({ "." }, VFS);
-
-    FM.Retain();
     // This code change all the paths to be absolute paths
     //  FIXME:  it is a bit fragile.
     bool previousIsDashI = false;
@@ -366,6 +368,13 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
 	SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
+
+    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
+        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+    clang::FileManager FM({ "." }, VFS);
+
+    FM.Retain();
+
     clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)), &FM);
 
 #if CLANG_VERSION_MAJOR <= 10
@@ -388,7 +397,6 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
     }
     return result;
 }
-#include "spdlog/sinks/basic_file_sink.h"
 
 int main(int argc, const char **argv)
 {
