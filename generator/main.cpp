@@ -47,11 +47,11 @@
 #include "logger.h"
 #include "spdlog/sinks/basic_file_sink.h"
 
-//extern "C" void __tsan_on_report() {
-//    // This function will be called whenever a data race is reported.
-//    // Place a breakpoint here.
-//    __builtin_trap();  // Trigger a breakpoint in gdb.
-//}
+extern "C" void __tsan_on_report() {
+    // This function will be called whenever a data race is reported.
+    // Place a breakpoint here.
+    __builtin_trap();  // Trigger a breakpoint in gdb.
+}
 
 namespace cl = llvm::cl;
 
@@ -106,6 +106,25 @@ Simple generation without compile command or project (compile command specified 
 With a project
   codebrowser_generator -b $PWD/build -a -p codebrowser:$PWD -o ~/public_html/code
 )");
+
+
+#include <clang/Frontend/CompilerInstance.h>
+
+#include <clang/Driver/Action.h>
+#include <clang/Driver/Compilation.h>
+#include <clang/Driver/Driver.h>
+#include <clang/Driver/Tool.h>
+#include <clang/Basic/FileManager.h>
+#include <clang/Basic/LangOptions.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Lex/PreprocessorOptions.h>
+#include <llvm/Support/Host.h>
+#include <clang/Basic/TargetInfo.h>
+#include <llvm/Support/CrashRecoveryContext.h>
+
+
+
+
 
 #if 1
 std::string locationToString(clang::SourceLocation loc, clang::SourceManager &sm)
@@ -301,7 +320,7 @@ public:
 //std::set<std::string> BrowserAction::processed;
 ProjectManager *BrowserAction::projectManager = nullptr;
 
-static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
+static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef Directory,
                            llvm::StringRef file,  DatabaseType WasInDatabase)
 {
 	SPDLOG_DEBUG("Start proceedCommand with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
@@ -397,6 +416,310 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
     }
     return result;
 }
+
+
+using namespace clang;
+std::unique_ptr<CompilerInvocation>
+buildCompilerInvocation(const std::string &main, std::vector<const char *> args,
+                        IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
+  //std::string save = "-resource-dir=" /*+ g_config->clang.resourceDir*/;
+  //args.push_back(save.c_str());
+  args.push_back("-fsyntax-only");
+
+  // Similar to clang/tools/driver/driver.cpp:insertTargetAndModeArgs but don't
+  // require llvm::InitializeAllTargetInfos().
+  auto target_and_mode =
+      driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
+  if (target_and_mode.DriverMode)
+    args.insert(args.begin() + 1, target_and_mode.DriverMode);
+  if (!target_and_mode.TargetPrefix.empty()) {
+    const char *arr[] = {"-target", target_and_mode.TargetPrefix.c_str()};
+    args.insert(args.begin() + 1, std::begin(arr), std::end(arr));
+  }
+
+  IntrusiveRefCntPtr<DiagnosticsEngine> diags(
+      CompilerInstance::createDiagnostics(new DiagnosticOptions,
+                                          new IgnoringDiagConsumer, true));
+#if LLVM_VERSION_MAJOR < 12 // llvmorg-12-init-5498-g257b29715bb
+  driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, vfs);
+#else
+  driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, "ccls", vfs);
+#endif
+  d.setCheckInputsExist(false);
+#if LLVM_VERSION_MAJOR >= 15
+  // For -include b.hh, don't probe b.hh.{gch,pch} and change to -include-pch.
+  d.setProbePrecompiled(false);
+#endif
+  static std::mutex mut_for_driver;
+  std::unique_ptr<driver::Compilation> comp;
+  {
+	  std::lock_guard lg(mut_for_driver);
+  	  comp.reset(d.BuildCompilation(args));
+  }
+  if (!comp)
+    return nullptr;
+  const driver::JobList &jobs = comp->getJobs();
+  bool offload_compilation = false;
+  if (jobs.size() > 1) {
+    for (auto &a : comp->getActions()){
+      // On MacOSX real actions may end up being wrapped in BindArchAction
+      if (isa<driver::BindArchAction>(a))
+        a = *a->input_begin();
+      if (isa<driver::OffloadAction>(a)) {
+        offload_compilation = true;
+        break;
+      }
+    }
+    if (!offload_compilation)
+      return nullptr;
+  }
+  if (jobs.size() == 0 || !isa<driver::Command>(*jobs.begin()))
+    return nullptr;
+
+  const driver::Command &cmd = cast<driver::Command>(*jobs.begin());
+  if (StringRef(cmd.getCreator().getName()) != "clang")
+    return nullptr;
+  const llvm::opt::ArgStringList &cc_args = cmd.getArguments();
+  auto ci = std::make_unique<CompilerInvocation>();
+#if LLVM_VERSION_MAJOR >= 10 // rC370122
+  if (!CompilerInvocation::CreateFromArgs(*ci, cc_args, *diags))
+#else
+  if (!CompilerInvocation::CreateFromArgs(
+          *ci, cc_args.data(), cc_args.data() + cc_args.size(), *diags))
+#endif
+    return nullptr;
+
+  ci->getDiagnosticOpts().IgnoreWarnings = true;
+  ci->getFrontendOpts().DisableFree = false;
+  // Enable IndexFrontendAction::shouldSkipFunctionBody.
+  ci->getFrontendOpts().SkipFunctionBodies = true;
+#if LLVM_VERSION_MAJOR >= 18
+  ci->getLangOpts().SpellChecking = false;
+  ci->getLangOpts().RecoveryAST = true;
+  ci->getLangOpts().RecoveryASTType = true;
+#else
+  ci->getLangOpts()->SpellChecking = false;
+#if LLVM_VERSION_MAJOR >= 11
+  ci->getLangOpts()->RecoveryAST = true;
+  ci->getLangOpts()->RecoveryASTType = true;
+#endif
+#endif
+  auto &isec = ci->getFrontendOpts().Inputs;
+  if (isec.size())
+    isec[0] = FrontendInputFile(main, isec[0].getKind(), isec[0].isSystem());
+#if LLVM_VERSION_MAJOR >= 10 // llvmorg-11-init-2414-g75f09b54429
+  ci->getPreprocessorOpts().DisablePragmaDebugCrash = true;
+#endif
+  // clangSerialization has an unstable format. Disable PCH reading/writing
+  // to work around PCH mismatch problems.
+  ci->getPreprocessorOpts().ImplicitPCHInclude.clear();
+  ci->getPreprocessorOpts().PrecompiledPreambleBytes = {0, false};
+  ci->getPreprocessorOpts().PCHThroughHeader.clear();
+
+  ci->getHeaderSearchOpts().ModuleFormat = "raw";
+  return ci;
+}
+
+class IndexDiags : public DiagnosticConsumer {
+public:
+  llvm::SmallString<64> message;
+  void HandleDiagnostic(DiagnosticsEngine::Level level,
+    const clang::Diagnostic &info) override {
+    DiagnosticConsumer::HandleDiagnostic(level, info);
+    if (message.empty())
+      info.FormatDiagnostic(message);
+  }
+};
+
+
+
+bool
+index(
+      const std::string &main,
+      const std::vector<const char *> &args,
+      //const std::vector<std::pair<std::string, std::string>> &remapped,
+      DatabaseType WasInDatabase) {
+    
+  auto pch = std::make_shared<PCHContainerOperations>();
+  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> fs =
+      llvm::vfs::getRealFileSystem();
+  std::shared_ptr<CompilerInvocation> ci =
+      buildCompilerInvocation(main, args, fs);
+  // e.g. .s
+  if (!ci)
+    return false;
+  // -fparse-all-comments enables documentation in the indexer and in
+  // code completion.
+#if LLVM_VERSION_MAJOR >= 18
+  ci->getLangOpts().CommentOpts.ParseAllComments =
+      g_config->index.comments > 1;
+  ci->getLangOpts().RetainCommentsFromSystemHeaders = true;
+#else
+  ci->getLangOpts()->CommentOpts.ParseAllComments = true;
+  ci->getLangOpts()->RetainCommentsFromSystemHeaders = true;
+#endif
+/*
+  std::string buf = wfiles->getContent(main);
+  std::vector<std::unique_ptr<llvm::MemoryBuffer>> bufs;
+  if (buf.size())
+    for (auto &[filename, content] : remapped) {
+      bufs.push_back(llvm::MemoryBuffer::getMemBuffer(content));
+      ci->getPreprocessorOpts().addRemappedFile(filename, bufs.back().get());
+    }
+*/
+  IndexDiags dc;
+  auto clang = std::make_unique<CompilerInstance>(pch);
+  clang->setInvocation(std::move(ci));
+  clang->createDiagnostics(&dc, false);
+  clang->getDiagnostics().setIgnoreAllWarnings(true);
+  clang->setTarget(TargetInfo::CreateTargetInfo(
+      clang->getDiagnostics(), clang->getInvocation().TargetOpts));
+  if (!clang->hasTarget())
+    return {};
+  clang->getPreprocessorOpts().RetainRemappedFileBuffers = true;
+#if LLVM_VERSION_MAJOR >= 9 // rC357037
+  clang->createFileManager(fs);
+#else
+  clang->setVirtualFileSystem(fs);
+  clang->createFileManager();
+#endif
+  clang->setSourceManager(new SourceManager(clang->getDiagnostics(),
+                                            clang->getFileManager(), true));
+
+/*
+  IndexParam param(*vfs, no_linkage);
+
+  index::IndexingOptions indexOpts;
+  indexOpts.SystemSymbolFilter =
+      index::IndexingOptions::SystemSymbolFilterKind::All;
+  if (no_linkage) {
+    indexOpts.IndexFunctionLocals = true;
+    indexOpts.IndexImplicitInstantiation = true;
+#if LLVM_VERSION_MAJOR >= 9
+
+    indexOpts.IndexParametersInDeclarations =
+        g_config->index.parametersInDeclarations;
+    indexOpts.IndexTemplateParameters = true;
+#endif
+  }
+*/
+#if LLVM_VERSION_MAJOR >= 10 // rC370337
+  auto action = std::make_unique<BrowserAction>(WasInDatabase);
+      //std::make_shared<IndexDataConsumer>(param), indexOpts, param);
+#else
+//  auto dataConsumer = std::make_shared<IndexDataConsumer>(param);
+//  auto action = createIndexingAction(
+//      dataConsumer, indexOpts,
+//      std::make_unique<BrowserAction>(WasInDatabase));
+#endif
+
+  std::string reason;
+  bool ok = true;
+  {
+    //llvm::CrashRecoveryContext crc;
+    //auto parse = [&]() {
+      if (!action->BeginSourceFile(*clang, clang->getFrontendOpts().Inputs[0]))
+        return false;
+#if LLVM_VERSION_MAJOR >= 9 // rL364464
+      if (llvm::Error e = action->Execute()) {
+        reason = llvm::toString(std::move(e));
+        return false;
+      }
+#else
+      if (!action->Execute())
+        return false;
+#endif
+      action->EndSourceFile();
+      ok = true;
+    //};
+    //if (!crc.RunSafely(parse)) {
+    //    SPDLOG_ERROR("clang crashed for {}", main);
+    //  return false;
+    //}
+  }
+  if (!ok) {
+    SPDLOG_ERROR("failed to index {}{}", main, reason.empty() ? "" : ": " + reason);
+    return false;
+  }
+    SPDLOG_INFO("clang index finished for {}", main);
+  return true;
+}
+
+static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
+                           llvm::StringRef file,  DatabaseType WasInDatabase)
+{
+	SPDLOG_DEBUG("Start proceedCommandccls with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
+    // This code change all the paths to be absolute paths
+    //  FIXME:  it is a bit fragile.
+    bool previousIsDashI = false;
+    bool previousNeedsMacro = false;
+    bool hasNoStdInc = false;
+    for (std::string &A : command) {
+        if (previousIsDashI && !A.empty() && A[0] != '/') {
+            A = Directory % "/" % A;
+            previousIsDashI = false;
+            continue;
+        } else if (A == "-I") {
+            previousIsDashI = true;
+            continue;
+        } else if (A == "-nostdinc" || A == "-nostdinc++") {
+            hasNoStdInc = true;
+            continue;
+        } else if (A == "-U" || A == "-D") {
+            previousNeedsMacro = true;
+            continue;
+        }
+        if (previousNeedsMacro) {
+            previousNeedsMacro = false;
+            continue;
+        }
+        previousIsDashI = false;
+        if (A.empty())
+            continue;
+        if (llvm::StringRef(A).startswith("-I") && A[2] != '/') {
+            A = "-I" % Directory % "/" % llvm::StringRef(A).substr(2);
+            continue;
+        }
+        if (A[0] == '-' || A[0] == '/')
+            continue;
+        std::string PossiblePath = Directory % "/" % A;
+        if (llvm::sys::fs::exists(PossiblePath))
+            A = PossiblePath;
+    }
+
+#if CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR < 6
+    auto Ajust = [&](clang::tooling::ArgumentsAdjuster &&aj) { command = aj.Adjust(command); };
+    Ajust(clang::tooling::ClangSyntaxOnlyAdjuster());
+    Ajust(clang::tooling::ClangStripOutputAdjuster());
+#elif CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR < 8
+    command = clang::tooling::getClangSyntaxOnlyAdjuster()(command);
+    command = clang::tooling::getClangStripOutputAdjuster()(command);
+#else
+    command = clang::tooling::getClangSyntaxOnlyAdjuster()(command, file);
+    command = clang::tooling::getClangStripOutputAdjuster()(command, file);
+#endif
+
+    if (!hasNoStdInc) {
+#ifndef _WIN32
+        command.push_back("-isystem");
+#else
+        command.push_back("-I");
+#endif
+
+        command.push_back("/builtins");
+    }
+
+    command.push_back("-Qunused-arguments");
+    command.push_back("-Wno-unknown-warning-option");
+	SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
+
+	std::vector<const char*> cmd;
+	for(const auto& s: command) cmd.emplace_back(s.data());
+	auto result = index(file.data(), cmd, WasInDatabase);
+    return result;
+}
+
+
 
 int main(int argc, const char **argv)
 {

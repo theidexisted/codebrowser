@@ -16,7 +16,7 @@ Find_Package(Clang REQUIRED CONFIG HINTS "${LLVM_INSTALL_PREFIX}/lib/cmake/clang
 message(STATUS "Found Clang in ${CLANG_INSTALL_PREFIX}")
 
 find_package(spdlog CONFIG REQUIRED)
-find_package(fmt CONFIG REQUIRED)
+#find_package(fmt CONFIG REQUIRED)
 
 add_executable(codebrowser_generator main.cpp projectmanager.cpp annotator.cpp generator.cpp preprocessorcallback.cpp
                filesystem.cpp qtsupport.cpp commenthandler.cpp ${CMAKE_CURRENT_BINARY_DIR}/projectmanager_systemprojects.cpp
@@ -76,8 +76,8 @@ configure_file(projectmanager_systemprojects.cpp.in projectmanager_systemproject
 if(NOT MSVC)
 # Flags not supported by MSVC
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=thread -g3")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=thread -g3")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti ")
 
 # TODO: Split up files and insert them row by row because
 # MSVC only accepts strings of 2^16 bytes length (~65kb)
