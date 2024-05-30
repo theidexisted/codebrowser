@@ -6,7 +6,7 @@ cmake_policy(SET CMP0057 NEW)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS_DEBUG_INIT "-O0")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS_RELEASE_INIT "-O3")
+    set(CMAKE_CXX_FLAGS_RELEASE_INIT "-g3")
 endif()
 
 Find_Package(LLVM REQUIRED CONFIG)
@@ -76,7 +76,7 @@ configure_file(projectmanager_systemprojects.cpp.in projectmanager_systemproject
 if(NOT MSVC)
 # Flags not supported by MSVC
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=thread -g3")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fsanitize=thread -g3")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti ")
 
 # TODO: Split up files and insert them row by row because

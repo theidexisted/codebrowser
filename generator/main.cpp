@@ -90,6 +90,11 @@ cl::opt<std::string>
              cl::Optional);
 
 cl::opt<bool>
+    IsDebug("dbg", 
+             cl::desc("If set debug log on"));
+
+
+cl::opt<bool>
     ProcessAllSources("a",
                       cl::desc("Process all files from the compile_commands.json. If this argument "
                                "is passed, the list of sources does not need to be passed"));
@@ -728,8 +733,9 @@ int main(int argc, const char **argv)
 	spdlog::set_default_logger(file_logger);
 	spdlog::set_pattern("%T[%t][file: %s][fun: %!][line: %#] %v");
 
+	if (IsDebug) spdlog::set_level(spdlog::level::trace);
 
-	spdlog::set_level(spdlog::level::trace);
+	//spdlog::set_level(spdlog::level::err);
 	//spdlog::flush_every(std::chrono::seconds(1));
 	SPDLOG_INFO("Start");
     std::string ErrorMessage;
@@ -945,8 +951,8 @@ int main(int argc, const char **argv)
         auto compileCommandsForFile = Compilations->getCompileCommands(file);
         if (!compileCommandsForFile.empty() && !isHeader) {
 			SPDLOG_DEBUG("compileCommandsForFile: {}", compileCommandsForFile.front().CommandLine);
-            std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
-                      << "\n";
+            //std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
+            //          << "\n";
             auto command = compileCommandsForFile.front().CommandLine;
             auto dir = compileCommandsForFile.front().Directory;
             auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
@@ -1003,8 +1009,8 @@ int main(int argc, const char **argv)
 
         bool success = false;
         if (!compileCommandsForFile.empty()) {
-            std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
-                      << "\n";
+            //std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
+             //         << "\n";
             auto command = compileCommandsForFile.front().CommandLine;
 			SPDLOG_ERROR("NotInDB: final compileCommandsForFile: {}", command);
             std::replace(command.begin(), command.end(), fileForCommands, it);
@@ -1074,5 +1080,6 @@ int main(int argc, const char **argv)
             fileIndex << fn << '\n';
         }
     }
-	SPDLOG_DEBUG("All process done");
+	SPDLOG_INFO("All process done");
+	std::cout << "Generate done\n";
 }

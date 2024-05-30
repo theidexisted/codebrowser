@@ -55,9 +55,7 @@
 #include "inlayhintannotator.h"
 #include "projectmanager.h"
 #include "stringbuilder.h"
-#include "spdlog/spdlog.h"
-#include "spdlog/fmt/fmt.h"
-#include "spdlog/fmt/ranges.h"
+#include "logger.h"
 
 
 namespace {
@@ -368,6 +366,10 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 
         auto refFilename = it.first;
         replace_invalid_filename_chars(refFilename);
+        if (refFilename.empty()) {
+			SPDLOG_INFO("The file name is empty after process, skip add reference: {}", it.first);
+        	continue;
+        }
 
         std::string filename = projectManager.outputPrefix % "/refs/" % refFilename % mp_suffix;
 		auto& myfile0 = GetRefFile(filename);

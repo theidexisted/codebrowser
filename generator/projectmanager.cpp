@@ -146,5 +146,5 @@ ProjectManager::DirCreator::DirCreator(const std::string& outputPrefix) {
 
 ProjectManager::RefFile::RefFile(const std::string &p)
 	: path_(p), ofs_(p, error_code, llvm::sys::fs::OF_Append) {
-				assert(!ofs_.has_error());
+				if(error_code || ofs_.has_error()) SPDLOG_ERROR("Error in open reference file:{}", p);
 			}
