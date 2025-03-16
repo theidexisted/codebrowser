@@ -16,14 +16,22 @@ Find_Package(Clang REQUIRED CONFIG HINTS "${LLVM_INSTALL_PREFIX}/lib/cmake/clang
 message(STATUS "Found Clang in ${CLANG_INSTALL_PREFIX}")
 
 find_package(spdlog CONFIG REQUIRED)
-#find_package(fmt CONFIG REQUIRED)
 
 add_executable(codebrowser_generator main.cpp projectmanager.cpp annotator.cpp generator.cpp preprocessorcallback.cpp
                filesystem.cpp qtsupport.cpp commenthandler.cpp ${CMAKE_CURRENT_BINARY_DIR}/projectmanager_systemprojects.cpp
                inlayhintannotator.cpp)
 target_include_directories(codebrowser_generator PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
 
-if (${LLVM_VERSION} VERSION_LESS "10.0.0")
+if(NOT LLVM_ENABLE_RTTI)
+  # releases.llvm.org libraries are compiled with -fno-rtti
+  # The mismatch between lib{clang,LLVM}* and ccls can make libstdc++ std::make_shared return nullptr
+  # _Sp_counted_ptr_inplace::_M_get_deleter
+    target_compile_options(codebrowser_generator PRIVATE -fno-rtti)
+endif()
+
+if (CLANG_LINK_CLANG_DYLIB)
+    target_link_libraries(codebrowser_generator PRIVATE clang-cpp)
+else()
     target_link_libraries(codebrowser_generator PRIVATE
         clangFrontend
         clangParse
@@ -33,14 +41,18 @@ if (${LLVM_VERSION} VERSION_LESS "10.0.0")
         clangLex
         clangTooling
         clangSerialization
+	LLVMCore
     )
-else()
-    target_link_libraries(codebrowser_generator PRIVATE clang-cpp)
 endif()
 
-#target_link_libraries(codebrowser_generator PRIVATE spdlog::spdlog )
 target_link_libraries(codebrowser_generator PRIVATE spdlog::spdlog_header_only)
+
+#message(STATUS "value of CLANG_LINK_CLANG_DYLIB:${CLANG_LINK_CLANG_DYLIB}")
+#message(STATUS "value of LLVM_LINK_LLVM_DYLIB: ${LLVM_LINK_LLVM_DYLIB}")
+#message(STATUS "value of LLVM_ENABLE_RTTI: ${LLVM_ENABLE_RTTI}")
+
 if(TARGET LLVM)
+	message(STATUS "target link llvm")
   target_link_libraries(codebrowser_generator PRIVATE LLVM )
 else()
   # We cannot use llvm_config() here because in some versions it uses PRIVATE when calling target_link_libraries
@@ -48,6 +60,7 @@ else()
   # fatal error.
   llvm_map_components_to_libnames(llvm_libs core support)
   target_link_libraries(codebrowser_generator PRIVATE ${llvm_libs})
+	message(STATUS "target link llvm_libs")
 endif()
 
 install(TARGETS codebrowser_generator RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

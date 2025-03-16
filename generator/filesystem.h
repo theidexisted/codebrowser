@@ -47,13 +47,8 @@ void replace_invalid_filename_chars(std::string &str);
 
 inline static std::string getFileIndexSuffix() {
 
-#if CLANG_VERSION_MAJOR >= 16
     		static const std::string mp_suffix =
         		llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").value_or("");
-#else
-    		static const std::string mp_suffix =
-        		llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").getValueOr("");
-#endif
 
 	return mp_suffix;
 
