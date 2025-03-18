@@ -19,7 +19,7 @@ find_package(spdlog CONFIG REQUIRED)
 
 add_executable(codebrowser_generator main.cpp projectmanager.cpp annotator.cpp generator.cpp preprocessorcallback.cpp
                filesystem.cpp qtsupport.cpp commenthandler.cpp ${CMAKE_CURRENT_BINARY_DIR}/projectmanager_systemprojects.cpp
-               inlayhintannotator.cpp)
+               inlayhintannotator.cpp ThreadsafeFS.cpp)
 target_include_directories(codebrowser_generator PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
 
 if(NOT LLVM_ENABLE_RTTI)

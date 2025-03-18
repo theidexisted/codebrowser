@@ -270,7 +270,7 @@ std::string InlayHintsAnnotatorHelper::getParamNameInlayHint(clang::CallExpr *e,
         return {};
 
     // simple setter? => ignore
-    if (f->getNumParams() == 1 && getSimpleName(f).startswith_insensitive("set"))
+    if (f->getNumParams() == 1 && getSimpleName(f).starts_with_insensitive("set"))
         return {};
 
     llvm::StringRef paramName = getSimpleName(paramDecl);
