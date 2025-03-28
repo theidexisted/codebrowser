@@ -45,7 +45,8 @@
 #include "embedded_includes.h"
 #include "threadpool.h"
 #include "logger.h"
-#include "spdlog/sinks/basic_file_sink.h"
+//#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
 
 extern "C" void __tsan_on_report() {
     // This function will be called whenever a data race is reported.
@@ -728,7 +729,8 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
 int main(int argc, const char **argv)
 {
-	auto file_logger = spdlog::basic_logger_mt("codebrowser", "/tmp/codebrowserlog.txt");
+	//auto file_logger = spdlog::basic_logger_mt("codebrowser", "/tmp/codebrowserlog.txt");
+	auto file_logger = spdlog::rotating_logger_mt("file_logger", "/tmp/codebrowserlog.txt", 1024 * 1024 * 50, 3, true);
 	file_logger->flush_on(spdlog::level::trace);
 	spdlog::set_default_logger(file_logger);
 	spdlog::set_pattern("%T[%t][file: %s][fun: %!][line: %#] %v");

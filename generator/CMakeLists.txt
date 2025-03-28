@@ -65,7 +65,7 @@ endif()
 
 install(TARGETS codebrowser_generator RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 target_include_directories(codebrowser_generator SYSTEM PUBLIC ${CLANG_INCLUDE_DIRS})
-set_property(TARGET codebrowser_generator PROPERTY CXX_STANDARD 17)
+#set_property(TARGET codebrowser_generator PROPERTY CXX_STANDARD 17)
 
 
 if (NOT APPLE AND NOT MSVC)
