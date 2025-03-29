@@ -23,15 +23,15 @@
 
 #include "commenthandler.h"
 #include "generator.h"
+#include "logger.h"
 #include <clang/AST/Mangle.h>
 #include <clang/Basic/SourceLocation.h>
+#include <fstream>
 #include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <fstream>
-#include "logger.h"
 
 struct ProjectManager;
 struct ProjectInfo;
@@ -99,7 +99,7 @@ public:
         EnumDecl,
         Label
     };
-   	//using RefFile=FileIndex;
+    // using RefFile=FileIndex;
 
 private:
     enum class Visibility {
@@ -164,11 +164,11 @@ private:
 
 public:
     explicit Annotator(ProjectManager &pm);
-    	/*
-        : projectManager(pm), file_index_(pm.outputPrefix + "/fileIndex" + getFileIndexSuffix())
-    {
-    }
-    */
+    /*
+    : projectManager(pm), file_index_(pm.outputPrefix + "/fileIndex" + getFileIndexSuffix())
+{
+}
+*/
     ~Annotator();
 
     ProjectManager &projectManager;
@@ -257,9 +257,9 @@ public:
     std::string getVisibleRef(clang::NamedDecl *Decl);
 
     std::string externalProjectForFile(clang::FileID fid);
-    auto& GetRefFile(const std::string& s) ;
-    auto& GetFuncIndexFile(const std::string& s) ;
-	void AddFileIndex(const std::string &s); 
+    auto &GetRefFile(const std::string &s);
+    auto &GetFuncIndexFile(const std::string &s);
+    void AddFileIndex(const std::string &s);
 
 
     /**

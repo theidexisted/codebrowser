@@ -21,12 +21,12 @@
 
 #pragma once
 
+#include "logger.h"
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Process.h>
 #include <system_error>
-#include "logger.h"
 
 namespace llvm {
 class Twine;
@@ -45,12 +45,11 @@ void make_forward_slashes(std::string &str);
 void replace_invalid_filename_chars(std::string &str);
 
 
-inline static std::string getFileIndexSuffix() {
+inline static std::string getFileIndexSuffix()
+{
 
-    		static const std::string mp_suffix =
-        		llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").value_or("");
+    static const std::string mp_suffix =
+        llvm::sys::Process::GetEnv("MULTIPROCESS_MODE").value_or("");
 
-	return mp_suffix;
-
+    return mp_suffix;
 }
-

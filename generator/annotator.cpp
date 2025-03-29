@@ -22,7 +22,6 @@
 #include "annotator.h"
 #include "filesystem.h"
 #include "generator.h"
-#include <iomanip>
 #include <chrono>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
@@ -39,6 +38,7 @@
 #include <clang/Lex/Preprocessor.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Tooling/Tooling.h>
+#include <iomanip>
 
 #include <fstream>
 #include <iostream>
@@ -53,9 +53,9 @@
 
 #include "compat.h"
 #include "inlayhintannotator.h"
+#include "logger.h"
 #include "projectmanager.h"
 #include "stringbuilder.h"
-#include "logger.h"
 
 
 namespace {
@@ -122,22 +122,25 @@ ssize_t getFieldOffset(const clang::Decl *decl)
 
 }
 Annotator::Annotator(ProjectManager &pm)
-        : projectManager(pm)
+    : projectManager(pm)
 {
-		SPDLOG_DEBUG("Annotator constructor");
+    SPDLOG_DEBUG("Annotator constructor");
 }
 
-auto& Annotator::GetRefFile(const std::string& s) {
-	SPDLOG_DEBUG("Get reference file:{}", s);
-  return projectManager.GetRefFile(s);
+auto &Annotator::GetRefFile(const std::string &s)
+{
+    SPDLOG_DEBUG("Get reference file:{}", s);
+    return projectManager.GetRefFile(s);
 }
-auto& Annotator::GetFuncIndexFile(const std::string& s) {
-	SPDLOG_DEBUG("Get function index file:{}", s);
-  return projectManager.GetFuncIndexFile(s);
+auto &Annotator::GetFuncIndexFile(const std::string &s)
+{
+    SPDLOG_DEBUG("Get function index file:{}", s);
+    return projectManager.GetFuncIndexFile(s);
 }
 
-void Annotator::AddFileIndex(const std::string &s){
-  projectManager.AddFileIndex(s);
+void Annotator::AddFileIndex(const std::string &s)
+{
+    projectManager.AddFileIndex(s);
 }
 
 
@@ -221,7 +224,7 @@ std::string Annotator::htmlNameForFile(clang::FileID id)
     {
         auto it = cache.find(id);
         if (it != cache.end()) {
-        	SPDLOG_DEBUG("Cache hit for file ID: {}", id.getHashValue());
+            SPDLOG_DEBUG("Cache hit for file ID: {}", id.getHashValue());
             return it->second.second;
         }
     }
@@ -247,7 +250,7 @@ std::string Annotator::htmlNameForFile(clang::FileID id)
         return fn;
     }
 
-	std::lock_guard<std::mutex> lock(cache_mutex);
+    std::lock_guard<std::mutex> lock(cache_mutex);
     cache[id] = { false, {} };
     SPDLOG_DEBUG("Skipping non-project file: {}", filename.c_str());
     return {};
@@ -272,7 +275,8 @@ void Annotator::registerInterestingDefinition(clang::SourceRange sourceRange,
 }
 
 
-std::string getCurrentDate() {
+std::string getCurrentDate()
+{
     // Get the current time point
     auto now = std::chrono::system_clock::now();
 
@@ -290,7 +294,7 @@ std::string getCurrentDate() {
 
 bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
 {
-	auto mp_suffix = getFileIndexSuffix();
+    auto mp_suffix = getFileIndexSuffix();
     // make sure the main file is in the cache.
     htmlNameForFile(getSourceMgr().getMainFileID());
 
@@ -307,7 +311,7 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
             projectManager.projects.cbegin(), projectManager.projects.cend(),
             [&fn](const ProjectInfo &it) { return llvm::StringRef(fn).startswith(it.name); });
         if (project_it == projectManager.projects.cend()) {
-			spdlog::error("GENERATION ERROR: {} not in a project", fn);
+            spdlog::error("GENERATION ERROR: {} not in a project", fn);
             std::cerr << "GENERATION ERROR: " << fn << " not in a project" << std::endl;
             continue;
         }
@@ -374,14 +378,14 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
         auto refFilename = it.first;
         replace_invalid_filename_chars(refFilename);
         if (refFilename.empty()) {
-			SPDLOG_INFO("The file name is empty after process, skip add reference: {}", it.first);
-        	continue;
+            SPDLOG_INFO("The file name is empty after process, skip add reference: {}", it.first);
+            continue;
         }
 
         std::string filename = projectManager.outputPrefix % "/refs/" % refFilename % mp_suffix;
-		auto& myfile0 = GetRefFile(filename);
-		std::string bindstr;
-		llvm::raw_string_ostream myfile(bindstr);
+        auto &myfile0 = GetRefFile(filename);
+        std::string bindstr;
+        llvm::raw_string_ostream myfile(bindstr);
         for (const auto &it2 : it.second) {
             clang::SourceRange loc = it2.loc;
             clang::SourceManager &sm = getSourceMgr();
@@ -497,7 +501,7 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
                 myfile << "/>\n";
             }
         }
-    	myfile0.AppendLine_Locked(myfile.str());
+        myfile0.AppendLine_Locked(myfile.str());
     }
 
     // now the function names
@@ -532,12 +536,12 @@ bool Annotator::generate(clang::Sema &Sema, bool WasInDatabase)
                 std::string funcIndexFN =
                     projectManager.outputPrefix % "/fnSearch/" % idx % mp_suffix;
 
-				std::string bindStr;
-				llvm::raw_string_ostream indexFile(bindStr);
+                std::string bindStr;
+                llvm::raw_string_ostream indexFile(bindStr);
                 indexFile << fnIt.second << '|' << fnIt.first << '\n';
 
-				auto& funcIndexFile = GetFuncIndexFile(funcIndexFN);
-				funcIndexFile.AppendLine_Locked(indexFile.str());
+                auto &funcIndexFile = GetFuncIndexFile(funcIndexFN);
+                funcIndexFile.AppendLine_Locked(indexFile.str());
                 saved.append(idxRef); // include \0;
             }
         }
@@ -1350,6 +1354,3 @@ Annotator::getDesignatorInlayHints(clang::InitListExpr *Syn)
     InlayHintsAnnotatorHelper helper(this);
     return helper.getDesignatorInlayHints(Syn);
 }
-
-
-

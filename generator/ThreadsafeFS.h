@@ -21,30 +21,32 @@
 /// snapshot semantics. clangd will not create vfs::FileSystems for use in
 /// different contexts, so either ThreadsafeFS::view or the returned FS may
 /// contain this logic.
-class ThreadsafeFS {
+class ThreadsafeFS
+{
 public:
-  virtual ~ThreadsafeFS() = default;
+    virtual ~ThreadsafeFS() = default;
 
-  /// Obtain a vfs::FileSystem with an arbitrary initial working directory.
-  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>
-  view(std::nullopt_t CWD) const {
-    return viewImpl();
-  }
+    /// Obtain a vfs::FileSystem with an arbitrary initial working directory.
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> view(std::nullopt_t CWD) const
+    {
+        return viewImpl();
+    }
 
-  /// Obtain a vfs::FileSystem with a specified working directory.
-  /// If the working directory can't be set (e.g. doesn't exist), logs and
-  /// returns the FS anyway.
-  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> view(std::string& CWD) const;
+    /// Obtain a vfs::FileSystem with a specified working directory.
+    /// If the working directory can't be set (e.g. doesn't exist), logs and
+    /// returns the FS anyway.
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> view(std::string &CWD) const;
 
 private:
-  /// Overridden by implementations to provide a vfs::FileSystem.
-  /// This is distinct from view(NoneType) to avoid GCC's -Woverloaded-virtual.
-  virtual llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> viewImpl() const = 0;
+    /// Overridden by implementations to provide a vfs::FileSystem.
+    /// This is distinct from view(NoneType) to avoid GCC's -Woverloaded-virtual.
+    virtual llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> viewImpl() const = 0;
 };
 
-class RealThreadsafeFS : public ThreadsafeFS {
+class RealThreadsafeFS : public ThreadsafeFS
+{
 private:
-  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> viewImpl() const override;
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> viewImpl() const override;
 };
 
 

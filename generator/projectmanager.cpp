@@ -28,14 +28,14 @@
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Path.h>
 
-#include "spdlog/spdlog.h"
 #include "spdlog/fmt/fmt.h"
 #include "spdlog/fmt/ranges.h"
+#include "spdlog/spdlog.h"
 ProjectManager::ProjectManager(std::string outputPrefix, std::string _dataPath)
     : outputPrefix(outputPrefix)
     , dataPath(std::move(_dataPath))
-	,dir_creator_(outputPrefix)
-   ,file_index_(outputPrefix + "/fileIndex" + getFileIndexSuffix())
+    , dir_creator_(outputPrefix)
+    , file_index_(outputPrefix + "/fileIndex" + getFileIndexSuffix())
 {
     if (dataPath.empty())
         dataPath = "../data";
@@ -43,18 +43,20 @@ ProjectManager::ProjectManager(std::string outputPrefix, std::string _dataPath)
     for (auto &&info : systemProjects()) {
         addProject(info);
     }
-    //createDir();
+    // createDir();
 }
 
 ProjectManager::FileIndex::FileIndex(const std::string &p)
-			: path_(p), ofs_(p, std::ios::app) {
-				SPDLOG_DEBUG("Construct of file index with path: {}", p);
-				assert(ofs_.is_open());
-			}
+    : path_(p)
+    , ofs_(p, std::ios::app)
+{
+    SPDLOG_DEBUG("Construct of file index with path: {}", p);
+    assert(ofs_.is_open());
+}
 
 ProjectManager::FileIndex::~FileIndex()
 {
-	SPDLOG_DEBUG("Destruct of file index with path: {}", path_);
+    SPDLOG_DEBUG("Destruct of file index with path: {}", path_);
 }
 
 bool ProjectManager::addProject(ProjectInfo info)
@@ -93,34 +95,30 @@ ProjectInfo *ProjectManager::projectForFile(llvm::StringRef filename)
 }
 
 
-//TODO find the corresponding entry for create file
+// TODO find the corresponding entry for create file
 bool ProjectManager::shouldProcess0(llvm::StringRef filename, ProjectInfo *project)
 {
-    if (!project)
-    {
-    	SPDLOG_DEBUG("should not process: {}", filename.str());
+    if (!project) {
+        SPDLOG_DEBUG("should not process: {}", filename.str());
         return false;
     }
-    if (project->type == ProjectInfo::External)
-    {
-    	SPDLOG_DEBUG("should not process since it's external: {}", filename.str());
+    if (project->type == ProjectInfo::External) {
+        SPDLOG_DEBUG("should not process since it's external: {}", filename.str());
         return false;
     }
     return true;
 }
 
 
-//TODO find the corresponding entry for create file
+// TODO find the corresponding entry for create file
 bool ProjectManager::shouldProcess(llvm::StringRef filename, ProjectInfo *project)
 {
-    if (!project)
-    {
-    	SPDLOG_DEBUG("should not process: {}", filename.str());
+    if (!project) {
+        SPDLOG_DEBUG("should not process: {}", filename.str());
         return false;
     }
-    if (project->type == ProjectInfo::External)
-    {
-    	SPDLOG_DEBUG("should not process since it's external: {}", filename.str());
+    if (project->type == ProjectInfo::External) {
+        SPDLOG_DEBUG("should not process since it's external: {}", filename.str());
         return false;
     }
 
@@ -129,34 +127,40 @@ bool ProjectManager::shouldProcess(llvm::StringRef filename, ProjectInfo *projec
     auto has = addFile_Locked(fn);
     SPDLOG_DEBUG("The final file name: {}, add lock succeed:{}", fn, has);
     return has;
-    //return !llvm::sys::fs::exists(fn);
-    // || boost::filesystem::last_write_time(p) < entry->getModificationTime();
+    // return !llvm::sys::fs::exists(fn);
+    //  || boost::filesystem::last_write_time(p) < entry->getModificationTime();
 }
 
 
 void ProjectManager::createDir()
 {
-	assert(false);
+    assert(false);
 }
-ProjectManager::DirCreator::DirCreator(const std::string& outputPrefix) {
-	SPDLOG_DEBUG("Create dir for prefix begin:{}", outputPrefix);
-	auto e = create_directories(outputPrefix);
-	assert(!e);
+ProjectManager::DirCreator::DirCreator(const std::string &outputPrefix)
+{
+    SPDLOG_DEBUG("Create dir for prefix begin:{}", outputPrefix);
+    auto e = create_directories(outputPrefix);
+    assert(!e);
     e = create_directories(llvm::Twine(outputPrefix, "/refs/_M"));
-	assert(!e);
+    assert(!e);
     e = create_directories(llvm::Twine(outputPrefix, "/fnSearch"));
-	assert(!e);
-	SPDLOG_DEBUG("Create dir for prefix done:{}", outputPrefix);
+    assert(!e);
+    SPDLOG_DEBUG("Create dir for prefix done:{}", outputPrefix);
 }
 
 ProjectManager::RefFile::RefFile(const std::string &p)
-	: path_(p) {
-	SPDLOG_DEBUG("The init of a ref file:{}", p);
+    : path_(p)
+{
+    SPDLOG_DEBUG("Init of a ref file:{}", p);
 }
 
-ProjectManager::RefFile::~RefFile() { Flush(); }
+ProjectManager::RefFile::~RefFile()
+{
+    Flush();
+}
 void ProjectManager::RefFile::Flush()
 {
+    SPDLOG_DEBUG("Flush of a ref file:{}", path_);
     std::error_code error_code;
     llvm::raw_fd_ostream ofs(path_, error_code, llvm::sys::fs::OF_Append);
     if (error_code || ofs.has_error()) {

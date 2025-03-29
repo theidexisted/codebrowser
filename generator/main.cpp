@@ -19,30 +19,30 @@
  * purchasing a commercial licence.
  ****************************************************************************/
 
-#include <latch>
 #include "clang/AST/ASTContext.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/JSONCompilationDatabase.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/CommandLine.h"
+#include <latch>
 
 #include <clang/Frontend/CompilerInstance.h>
 #include <llvm/ADT/StringSwitch.h>
 #include <llvm/Support/Path.h>
 
 
-#include <clang/Frontend/CompilerInstance.h>
+#include <clang/Basic/FileManager.h>
+#include <clang/Basic/LangOptions.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Basic/TargetInfo.h>
 #include <clang/Driver/Action.h>
 #include <clang/Driver/Compilation.h>
 #include <clang/Driver/Driver.h>
 #include <clang/Driver/Tool.h>
-#include <clang/Basic/FileManager.h>
-#include <clang/Basic/LangOptions.h>
-#include <clang/Basic/SourceManager.h>
+#include <clang/Frontend/CompilerInstance.h>
 #include <clang/Lex/PreprocessorOptions.h>
-#include <llvm/Support/Host.h>
-#include <clang/Basic/TargetInfo.h>
 #include <llvm/Support/CrashRecoveryContext.h>
+#include <llvm/Support/Host.h>
 
 
 
@@ -60,15 +60,16 @@
 #include <stdexcept>
 
 #include "embedded_includes.h"
-#include "threadpool.h"
 #include "logger.h"
-//#include "spdlog/sinks/basic_file_sink.h"
+#include "threadpool.h"
+// #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 
-extern "C" void __tsan_on_report() {
+extern "C" void __tsan_on_report()
+{
     // This function will be called whenever a data race is reported.
     // Place a breakpoint here.
-    __builtin_trap();  // Trigger a breakpoint in gdb.
+    __builtin_trap(); // Trigger a breakpoint in gdb.
 }
 
 namespace cl = llvm::cl;
@@ -107,9 +108,8 @@ cl::opt<std::string>
                       "or relative to the output directory. Defaults to ../data"),
              cl::Optional);
 
-cl::opt<bool>
-    IsDebug("dbg", 
-             cl::desc("If set debug log on"));
+cl::opt<bool> IsDebug("dbg", cl::desc("If set debug log on"), cl::desc("More debug logs"),
+                      cl::Optional);
 
 
 cl::opt<bool>
@@ -129,8 +129,6 @@ Simple generation without compile command or project (compile command specified 
 With a project
   codebrowser_generator -b $PWD/build -a -p codebrowser:$PWD -o ~/public_html/code
 )");
-
-
 
 
 
@@ -207,7 +205,7 @@ public:
         , annotator(projectManager)
         , WasInDatabase(WasInDatabase)
     {
-		SPDLOG_DEBUG("BrowserASTConsumer constructor");
+        SPDLOG_DEBUG("BrowserASTConsumer constructor");
         // ci.getLangOpts().DelayedTemplateParsing = (true);
 #if CLANG_VERSION_MAJOR < 16
         // the meaning of this function has changed which causes
@@ -217,7 +215,7 @@ public:
     }
     virtual ~BrowserASTConsumer()
     {
-		SPDLOG_DEBUG("BrowserASTConsumer destructor");
+        SPDLOG_DEBUG("BrowserASTConsumer destructor");
         ci.getDiagnostics().setClient(new clang::IgnoringDiagConsumer, true);
     }
 
@@ -234,7 +232,7 @@ public:
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef D) override
     {
         if (ci.getDiagnostics().hasFatalErrorOccurred()) {
-			SPDLOG_DEBUG("Reset errors: (Hack to ignore the fatal errors.)");
+            SPDLOG_DEBUG("Reset errors: (Hack to ignore the fatal errors.)");
             // Reset errors: (Hack to ignore the fatal errors.)
             ci.getDiagnostics().Reset();
             // When there was fatal error, processing the warnings may cause crashes
@@ -252,9 +250,9 @@ public:
 
 
         BrowserASTVisitor v(annotator);
-		SPDLOG_DEBUG("Create BrowserASTVisitor");
+        SPDLOG_DEBUG("Create BrowserASTVisitor");
         v.TraverseDecl(Ctx.getTranslationUnitDecl());
-		SPDLOG_DEBUG("TraverseDecl done");
+        SPDLOG_DEBUG("TraverseDecl done");
 
 
         annotator.generate(ci.getSema(), WasInDatabase != DatabaseType::NotInDatabase);
@@ -269,25 +267,29 @@ public:
     }
 };
 
-class ProcessedSet {
-	public:
-		bool try_insert(const std::string& s) {
-			std::lock_guard lg(mutex_);
-			auto [_,suc] = processed_.insert(s);
-			return suc;
-		}
-		static ProcessedSet& get() {
-			static ProcessedSet inst;
-			return inst;
-		}
-	private:
-		std::mutex mutex_;
-    	std::set<std::string> processed_;
+class ProcessedSet
+{
+public:
+    bool try_insert(const std::string &s)
+    {
+        std::lock_guard lg(mutex_);
+        auto [_, suc] = processed_.insert(s);
+        return suc;
+    }
+    static ProcessedSet &get()
+    {
+        static ProcessedSet inst;
+        return inst;
+    }
+
+private:
+    std::mutex mutex_;
+    std::set<std::string> processed_;
 };
 
 class BrowserAction : public clang::ASTFrontendAction
 {
-    //static std::set<std::string> processed;
+    // static std::set<std::string> processed;
     DatabaseType WasInDatabase;
 
 protected:
@@ -298,10 +300,10 @@ protected:
 #endif
     CreateASTConsumer(clang::CompilerInstance &CI, llvm::StringRef InFile) override
     {
-		SPDLOG_DEBUG("Start CreateASTConsumer for:{}", InFile.str());
-        //if (processed.count(InFile.str())) {
-        if(!ProcessedSet::get().try_insert(InFile.str())) {
-			SPDLOG_ERROR("Skipping already processed:{}", InFile.str());
+        SPDLOG_DEBUG("Start CreateASTConsumer for:{}", InFile.str());
+        // if (processed.count(InFile.str())) {
+        if (!ProcessedSet::get().try_insert(InFile.str())) {
+            SPDLOG_ERROR("Skipping already processed:{}", InFile.str());
             std::cerr << "Skipping already processed " << InFile.str() << std::endl;
             return nullptr;
         }
@@ -315,7 +317,7 @@ public:
     BrowserAction(DatabaseType WasInDatabase = DatabaseType::InDatabase)
         : WasInDatabase(WasInDatabase)
     {
-		SPDLOG_DEBUG("BrowserAction constructor");
+        SPDLOG_DEBUG("BrowserAction constructor");
     }
     virtual bool hasCodeCompletionSupport() const override
     {
@@ -325,13 +327,14 @@ public:
 };
 
 
-//std::set<std::string> BrowserAction::processed;
+// std::set<std::string> BrowserAction::processed;
 ProjectManager *BrowserAction::projectManager = nullptr;
 
 static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef Directory,
-                           llvm::StringRef file,  DatabaseType WasInDatabase)
+                               llvm::StringRef file, DatabaseType WasInDatabase)
 {
-	SPDLOG_DEBUG("Start proceedCommand with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
+    SPDLOG_DEBUG("Start proceedCommand with: command: {}, Directory: {}, file:{}, was in db:{}",
+                 command, Directory.data(), file.data(), ( int )WasInDatabase);
     // This code change all the paths to be absolute paths
     //  FIXME:  it is a bit fragile.
     bool previousIsDashI = false;
@@ -394,7 +397,7 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
-	SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
+    SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
 
     llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
         new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
@@ -402,11 +405,12 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
 
     FM.Retain();
 
-    clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)), &FM);
+    clang::tooling::ToolInvocation Inv(command, maybe_unique(new BrowserAction(WasInDatabase)),
+                                       &FM);
 
 #if CLANG_VERSION_MAJOR <= 10
     if (!hasNoStdInc) {
-    	SPDLOG_DEBUG("hasNoStdInc, Map the builtins includes");
+        SPDLOG_DEBUG("hasNoStdInc, Map the builtins includes");
         // Map the builtins includes
         const EmbeddedFile *f = EmbeddedFiles;
         while (f->filename) {
@@ -418,7 +422,7 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
 
     bool result = Inv.run();
     if (!result) {
-		SPDLOG_ERROR("Error: The file was not recognized as source code: : {}", file.str());
+        SPDLOG_ERROR("Error: The file was not recognized as source code: : {}", file.str());
         std::cerr << "Error: The file was not recognized as source code: " << file.str()
                   << std::endl;
     }
@@ -429,170 +433,165 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
 using namespace clang;
 std::unique_ptr<CompilerInvocation>
 buildCompilerInvocation(const std::string &main, std::vector<const char *> args,
-                        IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
-  //std::string save = "-resource-dir=" /*+ g_config->clang.resourceDir*/;
-  //args.push_back(save.c_str());
-  args.push_back("-fsyntax-only");
+                        IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs)
+{
+    // std::string save = "-resource-dir=" /*+ g_config->clang.resourceDir*/;
+    // args.push_back(save.c_str());
+    args.push_back("-fsyntax-only");
 
-  // Similar to clang/tools/driver/driver.cpp:insertTargetAndModeArgs but don't
-  // require llvm::InitializeAllTargetInfos().
-  auto target_and_mode =
-      driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
-  if (target_and_mode.DriverMode)
-    args.insert(args.begin() + 1, target_and_mode.DriverMode);
-  if (!target_and_mode.TargetPrefix.empty()) {
-    const char *arr[] = {"-target", target_and_mode.TargetPrefix.c_str()};
-    args.insert(args.begin() + 1, std::begin(arr), std::end(arr));
-  }
-
-  IntrusiveRefCntPtr<DiagnosticsEngine> diags(
-      CompilerInstance::createDiagnostics(new DiagnosticOptions,
-                                          new IgnoringDiagConsumer, true));
-#if LLVM_VERSION_MAJOR < 12 // llvmorg-12-init-5498-g257b29715bb
-  driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, vfs);
-#else
-  driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, "ccls", vfs);
-#endif
-  d.setCheckInputsExist(false);
-#if LLVM_VERSION_MAJOR >= 15
-  // For -include b.hh, don't probe b.hh.{gch,pch} and change to -include-pch.
-  d.setProbePrecompiled(false);
-#endif
-  static std::mutex mut_for_driver;
-  std::unique_ptr<driver::Compilation> comp;
-  {
-	  std::lock_guard lg(mut_for_driver);
-  	  comp.reset(d.BuildCompilation(args));
-  }
-  if (!comp)
-    return nullptr;
-  const driver::JobList &jobs = comp->getJobs();
-  bool offload_compilation = false;
-  if (jobs.size() > 1) {
-    for (auto &a : comp->getActions()){
-      // On MacOSX real actions may end up being wrapped in BindArchAction
-      if (isa<driver::BindArchAction>(a))
-        a = *a->input_begin();
-      if (isa<driver::OffloadAction>(a)) {
-        offload_compilation = true;
-        break;
-      }
+    // Similar to clang/tools/driver/driver.cpp:insertTargetAndModeArgs but don't
+    // require llvm::InitializeAllTargetInfos().
+    auto target_and_mode = driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
+    if (target_and_mode.DriverMode)
+        args.insert(args.begin() + 1, target_and_mode.DriverMode);
+    if (!target_and_mode.TargetPrefix.empty()) {
+        const char *arr[] = { "-target", target_and_mode.TargetPrefix.c_str() };
+        args.insert(args.begin() + 1, std::begin(arr), std::end(arr));
     }
-    if (!offload_compilation)
-      return nullptr;
-  }
-  if (jobs.size() == 0 || !isa<driver::Command>(*jobs.begin()))
-    return nullptr;
 
-  const driver::Command &cmd = cast<driver::Command>(*jobs.begin());
-  if (StringRef(cmd.getCreator().getName()) != "clang")
-    return nullptr;
-  const llvm::opt::ArgStringList &cc_args = cmd.getArguments();
-  auto ci = std::make_unique<CompilerInvocation>();
+    IntrusiveRefCntPtr<DiagnosticsEngine> diags(
+        CompilerInstance::createDiagnostics(new DiagnosticOptions, new IgnoringDiagConsumer, true));
+#if LLVM_VERSION_MAJOR < 12 // llvmorg-12-init-5498-g257b29715bb
+    driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, vfs);
+#else
+    driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, "ccls", vfs);
+#endif
+    d.setCheckInputsExist(false);
+#if LLVM_VERSION_MAJOR >= 15
+    // For -include b.hh, don't probe b.hh.{gch,pch} and change to -include-pch.
+    d.setProbePrecompiled(false);
+#endif
+    static std::mutex mut_for_driver;
+    std::unique_ptr<driver::Compilation> comp;
+    {
+        std::lock_guard lg(mut_for_driver);
+        comp.reset(d.BuildCompilation(args));
+    }
+    if (!comp)
+        return nullptr;
+    const driver::JobList &jobs = comp->getJobs();
+    bool offload_compilation = false;
+    if (jobs.size() > 1) {
+        for (auto &a : comp->getActions()) {
+            // On MacOSX real actions may end up being wrapped in BindArchAction
+            if (isa<driver::BindArchAction>(a))
+                a = *a->input_begin();
+            if (isa<driver::OffloadAction>(a)) {
+                offload_compilation = true;
+                break;
+            }
+        }
+        if (!offload_compilation)
+            return nullptr;
+    }
+    if (jobs.size() == 0 || !isa<driver::Command>(*jobs.begin()))
+        return nullptr;
+
+    const driver::Command &cmd = cast<driver::Command>(*jobs.begin());
+    if (StringRef(cmd.getCreator().getName()) != "clang")
+        return nullptr;
+    const llvm::opt::ArgStringList &cc_args = cmd.getArguments();
+    auto ci = std::make_unique<CompilerInvocation>();
 #if LLVM_VERSION_MAJOR >= 10 // rC370122
-  if (!CompilerInvocation::CreateFromArgs(*ci, cc_args, *diags))
+    if (!CompilerInvocation::CreateFromArgs(*ci, cc_args, *diags))
 #else
-  if (!CompilerInvocation::CreateFromArgs(
-          *ci, cc_args.data(), cc_args.data() + cc_args.size(), *diags))
+    if (!CompilerInvocation::CreateFromArgs(*ci, cc_args.data(), cc_args.data() + cc_args.size(),
+                                            *diags))
 #endif
-    return nullptr;
+        return nullptr;
 
-  ci->getDiagnosticOpts().IgnoreWarnings = true;
-  ci->getFrontendOpts().DisableFree = false;
-  // Enable IndexFrontendAction::shouldSkipFunctionBody.
-  ci->getFrontendOpts().SkipFunctionBodies = true;
+    ci->getDiagnosticOpts().IgnoreWarnings = true;
+    ci->getFrontendOpts().DisableFree = false;
+    // Enable IndexFrontendAction::shouldSkipFunctionBody.
+    ci->getFrontendOpts().SkipFunctionBodies = true;
 #if LLVM_VERSION_MAJOR >= 18
-  ci->getLangOpts().SpellChecking = false;
-  ci->getLangOpts().RecoveryAST = true;
-  ci->getLangOpts().RecoveryASTType = true;
+    ci->getLangOpts().SpellChecking = false;
+    ci->getLangOpts().RecoveryAST = true;
+    ci->getLangOpts().RecoveryASTType = true;
 #else
-  ci->getLangOpts()->SpellChecking = false;
+    ci->getLangOpts()->SpellChecking = false;
 #if LLVM_VERSION_MAJOR >= 11
-  ci->getLangOpts()->RecoveryAST = true;
-  ci->getLangOpts()->RecoveryASTType = true;
+    ci->getLangOpts()->RecoveryAST = true;
+    ci->getLangOpts()->RecoveryASTType = true;
 #endif
 #endif
-  auto &isec = ci->getFrontendOpts().Inputs;
-  if (isec.size())
-    isec[0] = FrontendInputFile(main, isec[0].getKind(), isec[0].isSystem());
+    auto &isec = ci->getFrontendOpts().Inputs;
+    if (isec.size())
+        isec[0] = FrontendInputFile(main, isec[0].getKind(), isec[0].isSystem());
 #if LLVM_VERSION_MAJOR >= 10 // llvmorg-11-init-2414-g75f09b54429
-  ci->getPreprocessorOpts().DisablePragmaDebugCrash = true;
+    ci->getPreprocessorOpts().DisablePragmaDebugCrash = true;
 #endif
-  // clangSerialization has an unstable format. Disable PCH reading/writing
-  // to work around PCH mismatch problems.
-  ci->getPreprocessorOpts().ImplicitPCHInclude.clear();
-  ci->getPreprocessorOpts().PrecompiledPreambleBytes = {0, false};
-  ci->getPreprocessorOpts().PCHThroughHeader.clear();
+    // clangSerialization has an unstable format. Disable PCH reading/writing
+    // to work around PCH mismatch problems.
+    ci->getPreprocessorOpts().ImplicitPCHInclude.clear();
+    ci->getPreprocessorOpts().PrecompiledPreambleBytes = { 0, false };
+    ci->getPreprocessorOpts().PCHThroughHeader.clear();
 
-  ci->getHeaderSearchOpts().ModuleFormat = "raw";
-  return ci;
+    ci->getHeaderSearchOpts().ModuleFormat = "raw";
+    return ci;
 }
 
-class IndexDiags : public DiagnosticConsumer {
+class IndexDiags : public DiagnosticConsumer
+{
 public:
-  llvm::SmallString<64> message;
-  void HandleDiagnostic(DiagnosticsEngine::Level level,
-    const clang::Diagnostic &info) override {
-    DiagnosticConsumer::HandleDiagnostic(level, info);
-    if (message.empty())
-      info.FormatDiagnostic(message);
-  }
+    llvm::SmallString<64> message;
+    void HandleDiagnostic(DiagnosticsEngine::Level level, const clang::Diagnostic &info) override
+    {
+        DiagnosticConsumer::HandleDiagnostic(level, info);
+        if (message.empty())
+            info.FormatDiagnostic(message);
+    }
 };
 
 
 
-bool
-index(
-      const std::string &main,
-      const std::vector<const char *> &args,
-      //const std::vector<std::pair<std::string, std::string>> &remapped,
-      DatabaseType WasInDatabase) {
-    
-  auto pch = std::make_shared<PCHContainerOperations>();
-  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> fs =
-      llvm::vfs::getRealFileSystem();
-  std::shared_ptr<CompilerInvocation> ci =
-      buildCompilerInvocation(main, args, fs);
-  // e.g. .s
-  if (!ci)
-    return false;
-  // -fparse-all-comments enables documentation in the indexer and in
-  // code completion.
+bool index(const std::string &main, const std::vector<const char *> &args,
+           // const std::vector<std::pair<std::string, std::string>> &remapped,
+           DatabaseType WasInDatabase)
+{
+
+    auto pch = std::make_shared<PCHContainerOperations>();
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> fs = llvm::vfs::getRealFileSystem();
+    std::shared_ptr<CompilerInvocation> ci = buildCompilerInvocation(main, args, fs);
+    // e.g. .s
+    if (!ci)
+        return false;
+        // -fparse-all-comments enables documentation in the indexer and in
+        // code completion.
 #if LLVM_VERSION_MAJOR >= 18
-  ci->getLangOpts().CommentOpts.ParseAllComments =
-      g_config->index.comments > 1;
-  ci->getLangOpts().RetainCommentsFromSystemHeaders = true;
+    ci->getLangOpts().CommentOpts.ParseAllComments = g_config->index.comments > 1;
+    ci->getLangOpts().RetainCommentsFromSystemHeaders = true;
 #else
-  ci->getLangOpts()->CommentOpts.ParseAllComments = true;
-  ci->getLangOpts()->RetainCommentsFromSystemHeaders = true;
+    ci->getLangOpts()->CommentOpts.ParseAllComments = true;
+    ci->getLangOpts()->RetainCommentsFromSystemHeaders = true;
 #endif
-/*
-  std::string buf = wfiles->getContent(main);
-  std::vector<std::unique_ptr<llvm::MemoryBuffer>> bufs;
-  if (buf.size())
-    for (auto &[filename, content] : remapped) {
-      bufs.push_back(llvm::MemoryBuffer::getMemBuffer(content));
-      ci->getPreprocessorOpts().addRemappedFile(filename, bufs.back().get());
-    }
-*/
-  IndexDiags dc;
-  auto clang = std::make_unique<CompilerInstance>(pch);
-  clang->setInvocation(std::move(ci));
-  clang->createDiagnostics(&dc, false);
-  clang->getDiagnostics().setIgnoreAllWarnings(true);
-  clang->setTarget(TargetInfo::CreateTargetInfo(
-      clang->getDiagnostics(), clang->getInvocation().TargetOpts));
-  if (!clang->hasTarget())
-    return {};
-  clang->getPreprocessorOpts().RetainRemappedFileBuffers = true;
+    /*
+      std::string buf = wfiles->getContent(main);
+      std::vector<std::unique_ptr<llvm::MemoryBuffer>> bufs;
+      if (buf.size())
+        for (auto &[filename, content] : remapped) {
+          bufs.push_back(llvm::MemoryBuffer::getMemBuffer(content));
+          ci->getPreprocessorOpts().addRemappedFile(filename, bufs.back().get());
+        }
+    */
+    IndexDiags dc;
+    auto clang = std::make_unique<CompilerInstance>(pch);
+    clang->setInvocation(std::move(ci));
+    clang->createDiagnostics(&dc, false);
+    clang->getDiagnostics().setIgnoreAllWarnings(true);
+    clang->setTarget(
+        TargetInfo::CreateTargetInfo(clang->getDiagnostics(), clang->getInvocation().TargetOpts));
+    if (!clang->hasTarget())
+        return {};
+    clang->getPreprocessorOpts().RetainRemappedFileBuffers = true;
 #if LLVM_VERSION_MAJOR >= 9 // rC357037
-  clang->createFileManager(fs);
+    clang->createFileManager(fs);
 #else
-  clang->setVirtualFileSystem(fs);
-  clang->createFileManager();
+    clang->setVirtualFileSystem(fs);
+    clang->createFileManager();
 #endif
-  clang->setSourceManager(new SourceManager(clang->getDiagnostics(),
-                                            clang->getFileManager(), true));
+    clang->setSourceManager(
+        new SourceManager(clang->getDiagnostics(), clang->getFileManager(), true));
 
 /*
   IndexParam param(*vfs, no_linkage);
@@ -612,8 +611,8 @@ index(
   }
 */
 #if LLVM_VERSION_MAJOR >= 10 // rC370337
-  auto action = std::make_unique<BrowserAction>(WasInDatabase);
-      //std::make_shared<IndexDataConsumer>(param), indexOpts, param);
+    auto action = std::make_unique<BrowserAction>(WasInDatabase);
+    // std::make_shared<IndexDataConsumer>(param), indexOpts, param);
 #else
 //  auto dataConsumer = std::make_shared<IndexDataConsumer>(param);
 //  auto action = createIndexingAction(
@@ -621,46 +620,47 @@ index(
 //      std::make_unique<BrowserAction>(WasInDatabase));
 #endif
 
-  std::string reason;
-  bool ok = true;
-  {
-    //llvm::CrashRecoveryContext crc;
-    //auto parse = [&]() {
-      if (!action->BeginSourceFile(*clang, clang->getFrontendOpts().Inputs[0]))
-        return false;
+    std::string reason;
+    bool ok = true;
+    {
+        // llvm::CrashRecoveryContext crc;
+        // auto parse = [&]() {
+        if (!action->BeginSourceFile(*clang, clang->getFrontendOpts().Inputs[0]))
+            return false;
 #if LLVM_VERSION_MAJOR >= 9 // rL364464
-      if (llvm::Error e = action->Execute()) {
-        reason = llvm::toString(std::move(e));
-        return false;
-      }
+        if (llvm::Error e = action->Execute()) {
+            reason = llvm::toString(std::move(e));
+            return false;
+        }
 #else
-      if (!action->Execute())
-        return false;
+        if (!action->Execute())
+            return false;
 #endif
-      action->EndSourceFile();
-      ok = true;
-    //};
-    //if (!crc.RunSafely(parse)) {
-    //    SPDLOG_ERROR("clang crashed for {}", main);
-    //  return false;
-    //}
-  }
-  if (!ok) {
-    SPDLOG_ERROR("failed to index {}{}", main, reason.empty() ? "" : ": " + reason);
-    return false;
-  }
+        action->EndSourceFile();
+        ok = true;
+        //};
+        // if (!crc.RunSafely(parse)) {
+        //    SPDLOG_ERROR("clang crashed for {}", main);
+        //  return false;
+        //}
+    }
+    if (!ok) {
+        SPDLOG_ERROR("failed to index {}{}", main, reason.empty() ? "" : ": " + reason);
+        return false;
+    }
     SPDLOG_INFO("clang index finished for {}", main);
-  return true;
+    return true;
 }
-std::string    getClangResourceDir()
+std::string getClangResourceDir()
 {
-	return CLANG_RESOURCE_DIRECTORY;
+    return CLANG_RESOURCE_DIRECTORY;
 }
 
 static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
-                           llvm::StringRef file,  DatabaseType WasInDatabase)
+                           llvm::StringRef file, DatabaseType WasInDatabase)
 {
-	SPDLOG_DEBUG("Start proceedCommandccls with: command: {}, Directory: {}, file:{}, was in db:{}", command, Directory.data(), file.data(), (int)WasInDatabase);
+    SPDLOG_DEBUG("Start proceedCommandccls with: command: {}, Directory: {}, file:{}, was in db:{}",
+                 command, Directory.data(), file.data(), ( int )WasInDatabase);
     // This code change all the paths to be absolute paths
     //  FIXME:  it is a bit fragile.
     bool previousIsDashI = false;
@@ -726,11 +726,12 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
-	SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
+    SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
 
-	std::vector<const char*> cmd;
-	for(const auto& s: command) cmd.emplace_back(s.data());
-	auto result = index(file.data(), cmd, WasInDatabase);
+    std::vector<const char *> cmd;
+    for (const auto &s : command)
+        cmd.emplace_back(s.data());
+    auto result = index(file.data(), cmd, WasInDatabase);
     return result;
 }
 
@@ -738,17 +739,15 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
 int main(int argc, const char **argv)
 {
-	//auto file_logger = spdlog::basic_logger_mt("codebrowser", "/tmp/codebrowserlog.txt");
-	auto file_logger = spdlog::rotating_logger_mt("file_logger", "/tmp/codebrowserlog.txt", 1024 * 1024 * 50, 3, true);
-	file_logger->flush_on(spdlog::level::trace);
-	spdlog::set_default_logger(file_logger);
-	spdlog::set_pattern("%T[%t][file: %s][fun: %!][line: %#] %v");
-
-	if (IsDebug) spdlog::set_level(spdlog::level::trace);
-
-	//spdlog::set_level(spdlog::level::err);
-	//spdlog::flush_every(std::chrono::seconds(1));
-	SPDLOG_INFO("Start");
+    // auto file_logger = spdlog::basic_logger_mt("codebrowser", "/tmp/codebrowserlog.txt");
+    auto file_logger = spdlog::rotating_logger_mt("file_logger", "/tmp/codebrowserlog.txt",
+                                                  1024 * 1024 * 50, 3, true);
+    file_logger->flush_on(spdlog::level::trace);
+    spdlog::set_default_logger(file_logger);
+    spdlog::set_pattern("%T[%L][%t][file: %s][fun: %!][line: %#] %v");
+    // spdlog::set_level(spdlog::level::err);
+    // spdlog::flush_every(std::chrono::seconds(1));
+    SPDLOG_INFO("Start");
     std::string ErrorMessage;
     std::unique_ptr<clang::tooling::CompilationDatabase> Compilations(
         clang::tooling::FixedCompilationDatabase::loadFromCommandLine(argc, argv
@@ -764,15 +763,23 @@ int main(int argc, const char **argv)
 
     llvm::cl::ParseCommandLineOptions(argc, argv);
 
+
+    if (IsDebug) {
+        file_logger->set_level(spdlog::level::debug);
+        SPDLOG_INFO("Set debug log on");
+    }
+
+
+
 #ifdef _WIN32
     make_forward_slashes(OutputPath._Get_data()._Myptr());
 #endif
 
-	size_t num_threads=std::thread::hardware_concurrency();
-	ThreadPool thread_pool(num_threads);
+    size_t num_threads = std::thread::hardware_concurrency();
+    ThreadPool thread_pool(num_threads);
     ProjectManager projectManager(OutputPath, DataPath);
     for (std::string &s : ProjectPaths) {
-    	SPDLOG_DEBUG("Try one project path:{}", s);
+        SPDLOG_DEBUG("Try one project path:{}", s);
         auto colonPos = s.find(':');
         if (colonPos >= s.size()) {
             std::cerr << "fail to parse project option : " << s << std::endl;
@@ -788,7 +795,7 @@ int main(int argc, const char **argv)
         }
     }
     for (std::string &s : ExternalProjectPaths) {
-    	SPDLOG_DEBUG("Try one external project path:{}", s);
+        SPDLOG_DEBUG("Try one external project path:{}", s);
         auto colonPos = s.find(':');
         if (colonPos >= s.size()) {
             std::cerr << "fail to parse project option : " << s << std::endl;
@@ -811,13 +818,13 @@ int main(int argc, const char **argv)
 
 
     if (!Compilations && llvm::sys::fs::exists(BuildPath)) {
-    	SPDLOG_DEBUG("!Compilations && llvm::sys::fs::exists(BuildPath):{}", BuildPath);
+        SPDLOG_DEBUG("!Compilations && llvm::sys::fs::exists(BuildPath):{}", BuildPath);
         if (llvm::sys::fs::is_directory(BuildPath)) {
-			SPDLOG_DEBUG("Build path is directory:{}, add to compilation database", BuildPath);
+            SPDLOG_DEBUG("Build path is directory:{}, add to compilation database", BuildPath);
             Compilations = std::unique_ptr<clang::tooling::CompilationDatabase>(
                 clang::tooling::CompilationDatabase::loadFromDirectory(BuildPath, ErrorMessage));
         } else {
-			SPDLOG_DEBUG("Build path is not directory:{}, load from file", BuildPath);
+            SPDLOG_DEBUG("Build path is not directory:{}, load from file", BuildPath);
             Compilations = std::unique_ptr<clang::tooling::CompilationDatabase>(
                 clang::tooling::JSONCompilationDatabase::loadFromFile(
                     BuildPath, ErrorMessage
@@ -833,7 +840,7 @@ int main(int argc, const char **argv)
     }
 
     if (!Compilations) {
-		SPDLOG_ERROR("Could not load compilationdatabase, exit");
+        SPDLOG_ERROR("Could not load compilationdatabase, exit");
         std::cerr
             << "Could not load compilationdatabase. "
                "Please use the -b option to a path containing a compile_commands.json, or use "
@@ -848,14 +855,14 @@ int main(int argc, const char **argv)
     std::sort(AllFiles.begin(), AllFiles.end());
     llvm::ArrayRef<std::string> Sources = SourcePaths;
     if (Sources.empty() && ProcessAllSources) {
-		SPDLOG_ERROR("Will process all files");
+        SPDLOG_INFO("Will process all files");
         // Because else the order is too random
         Sources = AllFiles;
     } else if (ProcessAllSources) {
         std::cerr << "Cannot use both sources and  '-a'" << std::endl;
         return EXIT_FAILURE;
     } else if (Sources.size() == 1 && llvm::sys::fs::is_directory(Sources.front())) {
-		SPDLOG_DEBUG("Iterator through the directory: {}", Sources.front());
+        SPDLOG_DEBUG("Iterator through the directory: {}", Sources.front());
 #if CLANG_VERSION_MAJOR != 3 || CLANG_VERSION_MINOR >= 5
         // A directory was passed, process all the files in that directory
         llvm::SmallString<128> DirName;
@@ -928,11 +935,11 @@ int main(int argc, const char **argv)
 
     std::vector<std::string> NotInDB;
 
-	std::latch completion_latch(Sources.size());
+    std::latch completion_latch(Sources.size());
     for (const auto &it : Sources) {
-		SPDLOG_DEBUG("Prepare work for source: {}", it);
+        SPDLOG_DEBUG("Prepare work for source: {}", it);
         std::string file = clang::tooling::getAbsolutePath(it);
-		SPDLOG_DEBUG("Absolute file path: {}", file);
+        SPDLOG_DEBUG("Absolute file path: {}", file);
         Progress++;
 
         if (it.empty() || it == "-")
@@ -942,15 +949,16 @@ int main(int argc, const char **argv)
         canonicalize(file, filename);
 
         if (auto project = projectManager.projectForFile(filename)) {
-			SPDLOG_DEBUG("The project for file: {}, {}", filename.c_str(), project->name);
+            SPDLOG_DEBUG("The project for file: {}, {}", filename.c_str(), project->name);
             if (!projectManager.shouldProcess0(filename, project)) {
-				SPDLOG_ERROR("Sources: Skipping already processed : {}", filename.c_str());
+                SPDLOG_ERROR("Sources: Skipping already processed : {}", filename.c_str());
                 std::cerr << "Sources: Skipping already processed " << filename.c_str()
                           << std::endl;
                 continue;
             }
         } else {
-			SPDLOG_ERROR("Sources: Skipping file not included by any project : {}", filename.c_str());
+            SPDLOG_ERROR("Sources: Skipping file not included by any project : {}",
+                         filename.c_str());
             std::cerr << "Sources: Skipping file not included by any project " << filename.c_str()
                       << std::endl;
             continue;
@@ -960,23 +968,24 @@ int main(int argc, const char **argv)
                             .Cases(".h", ".H", ".hh", ".hpp", true)
                             .Default(false);
 
-		SPDLOG_DEBUG("File is header: {}, {}", filename.c_str(), isHeader);
+        SPDLOG_DEBUG("File is header: {}, {}", filename.c_str(), isHeader);
         auto compileCommandsForFile = Compilations->getCompileCommands(file);
         if (!compileCommandsForFile.empty() && !isHeader) {
-			SPDLOG_DEBUG("compileCommandsForFile: {}", compileCommandsForFile.front().CommandLine);
-            //std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
-            //          << "\n";
+            SPDLOG_DEBUG("compileCommandsForFile: {}", compileCommandsForFile.front().CommandLine);
+            // std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
+            //           << "\n";
             auto command = compileCommandsForFile.front().CommandLine;
             auto dir = compileCommandsForFile.front().Directory;
             auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
-                                                    : DatabaseType::InDatabase;
-			thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp, &completion_latch](){
-					proceedCommand(std::move(command), dir, file, tp);
-					completion_latch.count_down();
-                    		});
+                                               : DatabaseType::InDatabase;
+            thread_pool.Schedule([command = std::move(command), dir = std::move(dir),
+                                  file = std::move(file), tp = tp, &completion_latch]() {
+                proceedCommand(std::move(command), dir, file, tp);
+                completion_latch.count_down();
+            });
 
         } else {
-			SPDLOG_DEBUG("Add delayed file to queue: {}", filename.c_str());
+            SPDLOG_DEBUG("Add delayed file to queue: {}", filename.c_str());
             // TODO: Try to find a command line for a file in the same path
             std::cerr << "Delayed " << file << "\n";
             Progress--;
@@ -985,22 +994,22 @@ int main(int argc, const char **argv)
         }
     }
 
-	SPDLOG_DEBUG("Delayed queue: {}", NotInDB);
+    SPDLOG_DEBUG("Delayed queue: {}", NotInDB);
     for (const auto &it : NotInDB) {
-		SPDLOG_DEBUG("Start to process delay file from queue: {}", it);
+        SPDLOG_DEBUG("Start to process delay file from queue: {}", it);
         std::string file = clang::tooling::getAbsolutePath(it);
-		SPDLOG_DEBUG("Absolute file path: {}", file);
+        SPDLOG_DEBUG("Absolute file path: {}", file);
         Progress++;
 
         if (auto project = projectManager.projectForFile(file)) {
-			SPDLOG_DEBUG("The project for file: {}, {}", file.c_str(), project->name);
+            SPDLOG_DEBUG("The project for file: {}, {}", file.c_str(), project->name);
             if (!projectManager.shouldProcess(file, project)) {
-				SPDLOG_ERROR("NotInDB: Skipping already processed : {}", file.c_str());
+                SPDLOG_ERROR("NotInDB: Skipping already processed : {}", file.c_str());
                 std::cerr << "NotInDB: Skipping already processed " << file.c_str() << std::endl;
                 continue;
             }
         } else {
-			SPDLOG_ERROR("NotInDB: Skipping file not included by any project", file.c_str());
+            SPDLOG_ERROR("NotInDB: Skipping file not included by any project", file.c_str());
             std::cerr << "NotInDB: Skipping file not included by any project " << file.c_str()
                       << std::endl;
             continue;
@@ -1011,8 +1020,8 @@ int main(int argc, const char **argv)
         auto compileCommandsForFile = Compilations->getCompileCommands(file);
         std::string fileForCommands = file;
         if (compileCommandsForFile.empty()) {
-			SPDLOG_ERROR("NotInDB: compileCommandsForFile is empty:{}", file.c_str());
- 
+            SPDLOG_ERROR("NotInDB: compileCommandsForFile is empty:{}", file.c_str());
+
             // Find the element with the bigger prefix
             auto lower = std::lower_bound(AllFiles.cbegin(), AllFiles.cend(), file);
             if (lower == AllFiles.cend())
@@ -1023,36 +1032,37 @@ int main(int argc, const char **argv)
 
         bool success = false;
         if (!compileCommandsForFile.empty()) {
-            //std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
-             //         << "\n";
+            // std::cerr << '[' << (100 * Progress / Sources.size()) << "%] Processing " << file
+            //          << "\n";
             auto command = compileCommandsForFile.front().CommandLine;
-			SPDLOG_ERROR("NotInDB: final compileCommandsForFile: {}", command);
+            SPDLOG_ERROR("NotInDB: final compileCommandsForFile: {}", command);
             std::replace(command.begin(), command.end(), fileForCommands, it);
-			SPDLOG_ERROR("NotInDB: final after replace compileCommandsForFile: {}", command);
+            SPDLOG_ERROR("NotInDB: final after replace compileCommandsForFile: {}", command);
             if (llvm::StringRef(file).endswith(".qdoc")) {
                 command.insert(command.begin() + 1, "-xc++");
                 // include the header for this .qdoc file
                 command.push_back("-include");
                 command.push_back(llvm::StringRef(file).substr(0, file.size() - 5) % ".h");
             }
-			
-			SPDLOG_ERROR("NotInDB: final after pushbacks compileCommandsForFile", command);
 
-			auto dir = compileCommandsForFile.front().Directory;
-			auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
-                                                              : DatabaseType::NotInDatabase;
-            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp, &completion_latch
-            ](){
-            	proceedCommand(std::move(command), dir, file, tp);
-            	completion_latch.count_down();
+            SPDLOG_ERROR("NotInDB: final after pushbacks compileCommandsForFile", command);
+
+            auto dir = compileCommandsForFile.front().Directory;
+            auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
+                                               : DatabaseType::NotInDatabase;
+            thread_pool.Schedule([command = std::move(command), dir = std::move(dir),
+                                  file = std::move(file), tp = tp, &completion_latch]() {
+                proceedCommand(std::move(command), dir, file, tp);
+                completion_latch.count_down();
             });
         } else {
             std::cerr << "Could not find commands for " << file << "\n";
         }
 
-		SPDLOG_DEBUG("Normal process done");
+        SPDLOG_DEBUG("Normal process done");
         if (!success && !IsProcessingAllDirectory) {
-            std::cerr << "Run into !success && !IsProcessingAllDirectory" << "\n";
+            std::cerr << "Run into !success && !IsProcessingAllDirectory"
+                      << "\n";
             ProjectInfo *projectinfo = projectManager.projectForFile(file);
             if (!projectinfo)
                 continue;
@@ -1096,7 +1106,7 @@ int main(int argc, const char **argv)
             fileIndex << fn << '\n';
         }
     }
-	SPDLOG_INFO("Entry process done, wait for backbround threads");
-	completion_latch.wait();
-	SPDLOG_INFO("Backbround threads done");
+    SPDLOG_INFO("Entry process done, wait for backbround threads");
+    completion_latch.wait();
+    SPDLOG_INFO("Backbround threads done");
 }

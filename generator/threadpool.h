@@ -1,16 +1,16 @@
 #pragma once
+#include "logger.h"
+#include <cassert>
 #include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <cassert>
-#include "logger.h"
 
 class ThreadPool
 {
 public:
-    explicit ThreadPool(size_t inum_threads=std::thread::hardware_concurrency())
+    explicit ThreadPool(size_t inum_threads = std::thread::hardware_concurrency())
     {
         queue_.resize(inum_threads);
         for (size_t i = 0; i < inum_threads; ++i) {
@@ -37,14 +37,14 @@ public:
         for (auto &t : threads_) {
             t.join();
         }
-		SPDLOG_INFO("All thread done");
+        SPDLOG_INFO("All thread done");
     }
 
     void Schedule(std::function<void()> &&func)
     {
         assert(func != nullptr);
-		static std::atomic_int idx{0};
-		auto slot = (idx++) % threads_.size();
+        static std::atomic_int idx { 0 };
+        auto slot = (idx++) % threads_.size();
 
         std::lock_guard l(mu_);
         assert(slot < queue_.size());
@@ -69,12 +69,11 @@ private:
                 queue_[myslot].pop();
             }
             if (func == nullptr) { // Shutdown signal.
-				SPDLOG_INFO("Finish thread with index {}", myslot);
+                SPDLOG_INFO("Finish thread with index {}", myslot);
                 break;
             }
 
             func();
-
         }
     }
 

@@ -71,8 +71,8 @@ endif()
 
 target_link_libraries(codebrowser_generator PRIVATE spdlog::spdlog_header_only)
 
-#message(STATUS "value of CLANG_LINK_CLANG_DYLIB:${CLANG_LINK_CLANG_DYLIB}")
-#message(STATUS "value of LLVM_LINK_LLVM_DYLIB: ${LLVM_LINK_LLVM_DYLIB}")
+message(STATUS "value of CLANG_LINK_CLANG_DYLIB:${CLANG_LINK_CLANG_DYLIB}")
+message(STATUS "value of LLVM_LINK_LLVM_DYLIB: ${LLVM_LINK_LLVM_DYLIB}")
 #message(STATUS "value of LLVM_ENABLE_RTTI: ${LLVM_ENABLE_RTTI}")
 
 if(TARGET LLVM)
