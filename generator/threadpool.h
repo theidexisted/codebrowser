@@ -37,6 +37,7 @@ public:
         for (auto &t : threads_) {
             t.join();
         }
+		SPDLOG_INFO("All thread done");
     }
 
     void Schedule(std::function<void()> &&func)
@@ -68,6 +69,7 @@ private:
                 queue_[myslot].pop();
             }
             if (func == nullptr) { // Shutdown signal.
+				SPDLOG_INFO("Finish thread with index {}", myslot);
                 break;
             }
 

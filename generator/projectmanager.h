@@ -100,6 +100,7 @@ struct ProjectManager
     	public:
 		FileIndex(const std::string &p);
 		FileIndex(const FileIndex&) = delete;
+		~FileIndex();
 		//FileIndex(FileIndex&&) = default;
 		void AppendLine_Locked(const std::string& s) {
 			std::lock_guard lg(mutex_);

@@ -221,6 +221,7 @@ std::string Annotator::htmlNameForFile(clang::FileID id)
     {
         auto it = cache.find(id);
         if (it != cache.end()) {
+        	SPDLOG_DEBUG("Cache hit for file ID: {}", id.getHashValue());
             return it->second.second;
         }
     }
@@ -228,6 +229,7 @@ std::string Annotator::htmlNameForFile(clang::FileID id)
     const clang::FileEntry *entry = getSourceMgr().getFileEntryForID(id);
     if (!entry || llvm::StringRef(entry->getName()).empty()) {
         cache[id] = { false, {} };
+        SPDLOG_DEBUG("Empty file entry, skipping: {}", id.getHashValue());
         return {};
     }
     llvm::SmallString<256> filename;
@@ -236,13 +238,18 @@ std::string Annotator::htmlNameForFile(clang::FileID id)
     ProjectInfo *project = projectManager.projectForFile(filename);
     if (project) {
         bool should_process = projectManager.shouldProcess(filename, project);
-        project_cache[id] = project;
         std::string fn = project->name % "/" % filename.substr(project->source_path.size());
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        project_cache[id] = project;
+
         cache[id] = { should_process, fn };
+        SPDLOG_DEBUG("Cached project file: {} -> {}", filename.c_str(), fn);
         return fn;
     }
 
+	std::lock_guard<std::mutex> lock(cache_mutex);
     cache[id] = { false, {} };
+    SPDLOG_DEBUG("Skipping non-project file: {}", filename.c_str());
     return {};
 }
 

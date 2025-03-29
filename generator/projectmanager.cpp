@@ -52,6 +52,11 @@ ProjectManager::FileIndex::FileIndex(const std::string &p)
 				assert(ofs_.is_open());
 			}
 
+ProjectManager::FileIndex::~FileIndex()
+{
+	SPDLOG_DEBUG("Destruct of file index with path: {}", path_);
+}
+
 bool ProjectManager::addProject(ProjectInfo info)
 {
     if (info.source_path.empty())
@@ -146,5 +151,5 @@ ProjectManager::DirCreator::DirCreator(const std::string& outputPrefix) {
 
 ProjectManager::RefFile::RefFile(const std::string &p)
 	: path_(p), ofs_(p, error_code, llvm::sys::fs::OF_Append) {
-				if(error_code || ofs_.has_error()) SPDLOG_ERROR("Error in open reference file:{}", p);
+				if(error_code || ofs_.has_error()) SPDLOG_ERROR("Error in open reference file:{}, code: {}", p, error_code.message());
 			}

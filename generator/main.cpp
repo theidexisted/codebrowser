@@ -29,6 +29,22 @@
 #include <llvm/ADT/StringSwitch.h>
 #include <llvm/Support/Path.h>
 
+
+#include <clang/Frontend/CompilerInstance.h>
+#include <clang/Driver/Action.h>
+#include <clang/Driver/Compilation.h>
+#include <clang/Driver/Driver.h>
+#include <clang/Driver/Tool.h>
+#include <clang/Basic/FileManager.h>
+#include <clang/Basic/LangOptions.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Lex/PreprocessorOptions.h>
+#include <llvm/Support/Host.h>
+#include <clang/Basic/TargetInfo.h>
+#include <llvm/Support/CrashRecoveryContext.h>
+
+
+
 #include "annotator.h"
 #include "browserastvisitor.h"
 #include "compat.h"
@@ -112,21 +128,6 @@ Simple generation without compile command or project (compile command specified 
 With a project
   codebrowser_generator -b $PWD/build -a -p codebrowser:$PWD -o ~/public_html/code
 )");
-
-
-#include <clang/Frontend/CompilerInstance.h>
-
-#include <clang/Driver/Action.h>
-#include <clang/Driver/Compilation.h>
-#include <clang/Driver/Driver.h>
-#include <clang/Driver/Tool.h>
-#include <clang/Basic/FileManager.h>
-#include <clang/Basic/LangOptions.h>
-#include <clang/Basic/SourceManager.h>
-#include <clang/Lex/PreprocessorOptions.h>
-#include <llvm/Support/Host.h>
-#include <clang/Basic/TargetInfo.h>
-#include <llvm/Support/CrashRecoveryContext.h>
 
 
 

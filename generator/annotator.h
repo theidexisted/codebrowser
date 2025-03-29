@@ -109,6 +109,7 @@ private:
     };
 
     Visibility getVisibility(const clang::NamedDecl *);
+    std::mutex cache_mutex;
 
     std::map<clang::FileID, std::pair<bool, std::string>> cache;
     std::map<clang::FileID, ProjectInfo *> project_cache;
