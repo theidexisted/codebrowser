@@ -652,6 +652,10 @@ index(
     SPDLOG_INFO("clang index finished for {}", main);
   return true;
 }
+std::string    getClangResourceDir()
+{
+	return CLANG_RESOURCE_DIRECTORY;
+}
 
 static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Directory,
                            llvm::StringRef file,  DatabaseType WasInDatabase)
@@ -716,6 +720,9 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
 
         command.push_back("/builtins");
     }
+    std::string resource_dir = getClangResourceDir(); // Implement this
+    command.push_back("-resource-dir");
+    command.push_back(resource_dir);
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");

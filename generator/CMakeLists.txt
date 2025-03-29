@@ -17,6 +17,30 @@ message(STATUS "Found Clang in ${CLANG_INSTALL_PREFIX}")
 
 find_package(spdlog CONFIG REQUIRED)
 
+if(NOT CLANG_RESOURCE_DIR)
+  find_program(CLANG_EXECUTABLE clang)
+  if(NOT CLANG_EXECUTABLE)
+    message(FATAL_ERROR "clang executable not found.")
+  endif()
+
+  execute_process(
+    COMMAND ${CLANG_EXECUTABLE} -print-resource-dir
+    RESULT_VARIABLE CLANG_FIND_RESOURCE_DIR_RESULT
+    OUTPUT_VARIABLE CLANG_RESOURCE_DIR
+    ERROR_VARIABLE CLANG_FIND_RESOURCE_DIR_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  if(CLANG_FIND_RESOURCE_DIR_RESULT)
+    message(FATAL_ERROR "Error retrieving Clang resource directory with Clang \
+            executable. Output:\n ${CLANG_FIND_RESOURCE_DIR_ERROR}")
+  endif()
+endif()
+set_property(SOURCE main.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+             CLANG_RESOURCE_DIRECTORY=R"\(${CLANG_RESOURCE_DIR}\)")
+
+message(STATUS "Using CLANG_RESOURCE_DIRECTORY: ${CLANG_RESOURCE_DIR}")
+
 add_executable(codebrowser_generator main.cpp projectmanager.cpp annotator.cpp generator.cpp preprocessorcallback.cpp
                filesystem.cpp qtsupport.cpp commenthandler.cpp ${CMAKE_CURRENT_BINARY_DIR}/projectmanager_systemprojects.cpp
                inlayhintannotator.cpp ThreadsafeFS.cpp)
