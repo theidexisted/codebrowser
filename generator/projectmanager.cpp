@@ -150,6 +150,21 @@ ProjectManager::DirCreator::DirCreator(const std::string& outputPrefix) {
 }
 
 ProjectManager::RefFile::RefFile(const std::string &p)
-	: path_(p), ofs_(p, error_code, llvm::sys::fs::OF_Append) {
-				if(error_code || ofs_.has_error()) SPDLOG_ERROR("Error in open reference file:{}, code: {}", p, error_code.message());
-			}
+	: path_(p) {
+	SPDLOG_DEBUG("The init of a ref file:{}", p);
+}
+
+ProjectManager::RefFile::~RefFile() { Flush(); }
+void ProjectManager::RefFile::Flush()
+{
+    std::error_code error_code;
+    llvm::raw_fd_ostream ofs(path_, error_code, llvm::sys::fs::OF_Append);
+    if (error_code || ofs.has_error()) {
+        SPDLOG_ERROR("Error in open reference file:{}, code: {}, skip write file", path_,
+                     error_code.message());
+        return;
+    }
+    for (const auto &line : contents_) {
+        ofs << line;
+    }
+}

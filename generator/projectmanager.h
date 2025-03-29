@@ -115,16 +115,21 @@ struct ProjectManager
     	public:
 		RefFile(const std::string &p);
 		RefFile(const FileIndex&) = delete;
+		~RefFile();
 		void AppendLine_Locked(const std::string& s) {
 			std::lock_guard lg(mutex_);
-			ofs_<<s;
+			contents_.emplace_back(s);
+			//ofs_<<s;
 		}
+		// WARN only call it at last to avoid data race
+		void Flush(); 
 		private:
 		std::mutex mutex_;
-		static inline thread_local std::error_code error_code;
+		//static inline thread_local std::error_code error_code;
 		std::string path_;
+		std::vector<std::string> contents_;
 		//std::ofstream ofs_;
-		llvm::raw_fd_ostream ofs_;
+		//llvm::raw_fd_ostream ofs_;
     };
 
     RefFile& GetRefFile(const std::string& s) {

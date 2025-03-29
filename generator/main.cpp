@@ -19,6 +19,7 @@
  * purchasing a commercial licence.
  ****************************************************************************/
 
+#include <latch>
 #include "clang/AST/ASTContext.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/JSONCompilationDatabase.h"
@@ -760,8 +761,9 @@ int main(int argc, const char **argv)
     make_forward_slashes(OutputPath._Get_data()._Myptr());
 #endif
 
+	size_t num_threads=std::thread::hardware_concurrency();
+	ThreadPool thread_pool(num_threads);
     ProjectManager projectManager(OutputPath, DataPath);
-	ThreadPool thread_pool;
     for (std::string &s : ProjectPaths) {
     	SPDLOG_DEBUG("Try one project path:{}", s);
         auto colonPos = s.find(':');
@@ -919,6 +921,7 @@ int main(int argc, const char **argv)
 
     std::vector<std::string> NotInDB;
 
+	std::latch completion_latch(Sources.size());
     for (const auto &it : Sources) {
 		SPDLOG_DEBUG("Prepare work for source: {}", it);
         std::string file = clang::tooling::getAbsolutePath(it);
@@ -960,8 +963,9 @@ int main(int argc, const char **argv)
             auto dir = compileCommandsForFile.front().Directory;
             auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
                                                     : DatabaseType::InDatabase;
-			thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp](){
+			thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp, &completion_latch](){
 					proceedCommand(std::move(command), dir, file, tp);
+					completion_latch.count_down();
                     		});
 
         } else {
@@ -1030,9 +1034,11 @@ int main(int argc, const char **argv)
 			auto dir = compileCommandsForFile.front().Directory;
 			auto tp = IsProcessingAllDirectory ? DatabaseType::ProcessFullDirectory
                                                               : DatabaseType::NotInDatabase;
-            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp](){proceedCommand(std::move(command), dir,
-                                     file, tp);
-                    });
+            thread_pool.Schedule([command = std::move(command), dir = std::move(dir), file=std::move(file), tp=tp, &completion_latch
+            ](){
+            	proceedCommand(std::move(command), dir, file, tp);
+            	completion_latch.count_down();
+            });
         } else {
             std::cerr << "Could not find commands for " << file << "\n";
         }
@@ -1083,6 +1089,7 @@ int main(int argc, const char **argv)
             fileIndex << fn << '\n';
         }
     }
-	SPDLOG_INFO("All process done");
-	std::cout << "Generate done\n";
+	SPDLOG_INFO("Entry process done, wait for backbround threads");
+	completion_latch.wait();
+	SPDLOG_INFO("Backbround threads done");
 }
