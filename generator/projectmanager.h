@@ -107,7 +107,7 @@ struct ProjectManager
         void AppendLine_Locked(const std::string &s)
         {
             std::lock_guard lg(mutex_);
-            ofs_ << s;
+            ofs_ << s << '\n';
         }
 
     private:

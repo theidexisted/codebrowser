@@ -943,7 +943,10 @@ int main(int argc, const char **argv)
         Progress++;
 
         if (it.empty() || it == "-")
+        {
+            completion_latch.count_down();
             continue;
+        }
 
         llvm::SmallString<256> filename;
         canonicalize(file, filename);
@@ -954,6 +957,7 @@ int main(int argc, const char **argv)
                 SPDLOG_ERROR("Sources: Skipping already processed : {}", filename.c_str());
                 std::cerr << "Sources: Skipping already processed " << filename.c_str()
                           << std::endl;
+                completion_latch.count_down();
                 continue;
             }
         } else {
@@ -961,6 +965,7 @@ int main(int argc, const char **argv)
                          filename.c_str());
             std::cerr << "Sources: Skipping file not included by any project " << filename.c_str()
                       << std::endl;
+            completion_latch.count_down();
             continue;
         }
 
@@ -1006,12 +1011,14 @@ int main(int argc, const char **argv)
             if (!projectManager.shouldProcess(file, project)) {
                 SPDLOG_ERROR("NotInDB: Skipping already processed : {}", file.c_str());
                 std::cerr << "NotInDB: Skipping already processed " << file.c_str() << std::endl;
+                completion_latch.count_down();
                 continue;
             }
         } else {
             SPDLOG_ERROR("NotInDB: Skipping file not included by any project", file.c_str());
             std::cerr << "NotInDB: Skipping file not included by any project " << file.c_str()
                       << std::endl;
+            completion_latch.count_down();
             continue;
         }
 
@@ -1056,6 +1063,7 @@ int main(int argc, const char **argv)
                 completion_latch.count_down();
             });
         } else {
+            completion_latch.count_down();
             std::cerr << "Could not find commands for " << file << "\n";
         }
 

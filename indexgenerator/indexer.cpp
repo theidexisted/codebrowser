@@ -27,7 +27,13 @@
 #include <vector>
 #include <map>
 #include <ctime>
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
+
+#include "spdlog/fmt/fmt.h"
+#include "spdlog/fmt/ranges.h"
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/rotating_file_sink.h"
 #include "../global.h"
 
 const char *data_url = "../data";
@@ -66,6 +72,7 @@ void linkInterestingDefinitions(std::ofstream &myfile, std::string linkFile, std
     }
     myfile << "<ul>";
     std::istringstream f(interestingDefitions);
+    SPDLOG_DEBUG("linkInterestingDefinitions: {}", interestingDefitions);
     std::string className;
     while (std::getline(f, className, ',')) {
         if (className.length() == 0) {
@@ -87,13 +94,16 @@ void gererateRecursisively(FolderInfo *folder, const std::string &root, const st
     std::string filename = root + "/" + path + "index.html";
     myfile.open(filename);
     if (!myfile) {
+    	SPDLOG_ERROR("Failed to open: {}", filename);
         std::cerr << "Error generating " << filename << std::endl;
         return;
     }
     std::cerr << "Generating " << filename << std::endl;
+    SPDLOG_INFO("Generating: {}", filename);
 
     std::string data_path = data_url[0] == '.' ? (rel + data_url) : std::string(data_url);
 
+    SPDLOG_INFO("Data path: {}", data_path);
 
     size_t pos = root.rfind('/', root.size()-2);
     std::string project = pos < root.size() ? root.substr(pos+1) : root;
@@ -146,11 +156,14 @@ void gererateRecursisively(FolderInfo *folder, const std::string &root, const st
 
     for (auto it : folder->subfolders) {
         const std::string &name = it.first;
+    	SPDLOG_DEBUG("start with subfolder: {}", name);
         if (it.second) {
+    		SPDLOG_DEBUG("Then dfs: {}", name);
             gererateRecursisively(it.second.get(), root, path+name+"/", rel + "../");
             myfile << "<tr><td class='folder'><a href='"<< name <<"/' class='opener' data-path='" << path << name << "'>[+]</a> "
                       "<a href='" << name << "/'>" << name << "/</a></td><td></td></tr>\n";
         } else {
+    		SPDLOG_DEBUG("This is the last bottom");
             std::string interestingDefintions = extractMetaFromHTML("woboq:interestingDefinitions", root + "/" + path + name + ".html");
             myfile << "<tr><td class='file'>    <a href='" << name << ".html'>"
                    << name
@@ -181,9 +194,18 @@ void gererateRecursisively(FolderInfo *folder, const std::string &root, const st
     }
     myfile << "<br />Powered by <a href='https://woboq.com'><img alt='Woboq' src='https://code.woboq.org/woboq-16.png' width='41' height='16' /></a> <a href='https://code.woboq.org'>Code Browser</a> "
             CODEBROWSER_VERSION "\n<br/>Generator usage only permitted with license</p>\n</body></html>\n";
+    SPDLOG_INFO("Generate done for file: {}", filename);
 }
 
 int main(int argc, char **argv) {
+
+    auto file_logger = spdlog::rotating_logger_mt("file_logger", "/tmp/indexgenerator.txt",
+                                                  1024 * 1024 * 50, 3, true);
+    file_logger->flush_on(spdlog::level::trace);
+    spdlog::set_default_logger(file_logger);
+    file_logger->set_level(spdlog::level::debug);
+    spdlog::set_pattern("%T[%L][%t][file: %s][fun: %!][line: %#] %v");
+    SPDLOG_INFO("Start");
 
     std::string root;
     bool skipOptions = false;
@@ -227,26 +249,37 @@ int main(int argc, char **argv) {
 
     if (root.empty()) {
         std::cerr << "Usage: " << argv[0] << " <path> [-d data_url] [-p project_definition]" << std::endl;
+    	SPDLOG_INFO("Empty root, exit");
         return -1;
     }
-    std::ifstream fileIndex(root + "/" + "fileIndex");
+    auto indexpath = root + "/" + "fileIndex";
+    std::ifstream fileIndex(indexpath);
     std::string line;
+    SPDLOG_INFO("Enter root: {}", indexpath);
 
     FolderInfo rootInfo;
     while (std::getline(fileIndex, line))
     {
+    	SPDLOG_DEBUG("process line: command: {}", line);
         FolderInfo *parent = &rootInfo;
 
         unsigned int pos = 0;
         unsigned int next_pos;
         while ((next_pos = line.find('/', pos)) < line.size()) {
-            auto &sub = parent->subfolders[line.substr(pos, next_pos - pos)];
-            if (!sub) sub = std::make_shared<FolderInfo>();
+        	auto s = line.substr(pos, next_pos - pos);
+            auto &sub = parent->subfolders[s];
+            if (!sub) {
+            	sub = std::make_shared<FolderInfo>();
+    			SPDLOG_DEBUG("create new subfolder: {}", s);
+            }
             parent = sub.get();
             pos = next_pos + 1;
         }
-        parent->subfolders[line.substr(pos)]; //make sure it exists;
+        auto s= line.substr(pos);
+        parent->subfolders[s]; //make sure it exists;
+    	SPDLOG_DEBUG("ensure exists: {}", s);
     }
+    SPDLOG_DEBUG("begin resursive");
     gererateRecursisively(&rootInfo, root, "");
     return 0;
 }
