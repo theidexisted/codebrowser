@@ -28,10 +28,16 @@
 #include <clang/Basic/Version.h>
 #include <fstream>
 #include <iostream>
+#include <sstream>
+
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 
+#ifdef DEBUG
+// TODO replace with c++23
+#include <boost/stacktrace.hpp>
+#endif
 #include "spdlog/fmt/fmt.h"
 #include "spdlog/fmt/ranges.h"
 #include "spdlog/spdlog.h"
@@ -153,6 +159,13 @@ void Generator::generate(llvm::StringRef outputPrefix, std::string dataPath,
                          const std::set<std::string> &interestingDefinitions)
 {
     std::string real_filename = outputPrefix % "/" % filename % ".html";
+#ifdef DEBUG
+    if (filename.ends_with(".h")) {
+        std::ostringstream oss;
+        oss << boost::stacktrace::stacktrace();
+        SPDLOG_DEBUG("This is a header file will call path: {}", oss.str());
+    }
+#endif
     SPDLOG_DEBUG("generate file with real_filename: {}", real_filename);
     // Make sure the parent directory exist:
     create_directories(llvm::StringRef(real_filename).rsplit('/').first);

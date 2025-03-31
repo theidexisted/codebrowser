@@ -73,7 +73,7 @@ struct ProjectInfo
 struct ProjectManager
 {
     explicit ProjectManager(std::string outputPrefix, std::string _dataPath);
-
+    ~ProjectManager();
     bool addProject(ProjectInfo info);
 
     void createDir();
@@ -124,7 +124,9 @@ struct ProjectManager
         void AppendLine_Locked(const std::string &s)
         {
             std::lock_guard lg(mutex_);
-            contents_.emplace_back(s);
+            if (!contents_.empty())
+                contents_.append(1, '\n');
+            contents_.append(s);
             // ofs_<<s;
         }
         // WARN only call it at last to avoid data race
@@ -134,9 +136,10 @@ struct ProjectManager
         std::mutex mutex_;
         // static inline thread_local std::error_code error_code;
         std::string path_;
-        std::vector<std::string> contents_;
-        // std::ofstream ofs_;
-        // llvm::raw_fd_ostream ofs_;
+        std::string contents_;
+        // std::vector<std::string> contents_;
+        //  std::ofstream ofs_;
+        //  llvm::raw_fd_ostream ofs_;
     };
 
     RefFile &GetRefFile(const std::string &s)

@@ -168,7 +168,13 @@ void ProjectManager::RefFile::Flush()
                      error_code.message());
         return;
     }
-    for (const auto &line : contents_) {
-        ofs << line;
-    }
+    // for (const auto &line : contents_) {
+    ofs << contents_;
+    //}
+}
+
+ProjectManager::~ProjectManager()
+{
+    SPDLOG_INFO("Number of ref files:{}", ref_files.size());
+    SPDLOG_INFO("Number of func index files:{}", func_index_files.size());
 }

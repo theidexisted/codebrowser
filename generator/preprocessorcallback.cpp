@@ -21,6 +21,7 @@
 
 #include "preprocessorcallback.h"
 #include "annotator.h"
+#include "logger.h"
 #include "projectmanager.h"
 #include "stringbuilder.h"
 #include <clang/Basic/FileManager.h>
@@ -300,6 +301,7 @@ void PreprocessorCallback::InclusionDirective(
 
     auto B = sm.getFileOffset(FilenameRange.getBegin());
     auto E = sm.getFileOffset(FilenameRange.getEnd());
+    SPDLOG_DEBUG("in the pp handlers, we generate:", link);
 
     annotator.generator(FID).addTag("a", "href=\"" % link % "\"", B, E - B);
 }
