@@ -337,7 +337,9 @@ struct BrowserASTVisitor : clang::RecursiveASTVisitor<BrowserASTVisitor>
                 auto paramDecl = decl->getParamDecl(i);
                 auto t = paramDecl->getType();
                 auto arg = e->getArg(i);
-                std::string prefix = annotator.getParamNameForArg(e, paramDecl, arg);
+                // std::string prefix = annotator.getParamNameForArg(e, paramDecl, arg);
+                // FIXME Remove the inlayHint now, this would have unnecessary process
+                std::string prefix; // = annotator.getParamNameForArg(e, paramDecl, arg);
                 if (t->isLValueReferenceType() && !t.getNonReferenceType().isConstQualified()) {
                     annotator.annotateSourceRange(e->getArg(i)->getSourceRange(), "span",
                                                   "class='refarg'");
