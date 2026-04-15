@@ -42,7 +42,7 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Lex/PreprocessorOptions.h>
 #include <llvm/Support/CrashRecoveryContext.h>
-#include <llvm/Support/Host.h>
+#include <llvm/TargetParser/Host.h>
 
 
 
@@ -301,10 +301,14 @@ protected:
     CreateASTConsumer(clang::CompilerInstance &CI, llvm::StringRef InFile) override
     {
         SPDLOG_DEBUG("Start CreateASTConsumer for:{}", InFile.str());
-        // if (processed.count(InFile.str())) {
-        if (!ProcessedSet::get().try_insert(InFile.str())) {
-            SPDLOG_ERROR("Skipping already processed:{}", InFile.str());
-            std::cerr << "Skipping already processed " << InFile.str() << std::endl;
+        llvm::SmallString<256> canonicalInput;
+        canonicalize(InFile, canonicalInput);
+        llvm::StringRef dedupKey =
+            canonicalInput.empty() ? InFile : llvm::StringRef(canonicalInput);
+
+        if (!ProcessedSet::get().try_insert(dedupKey.str())) {
+            SPDLOG_ERROR("Skipping already processed:{}", dedupKey.str());
+            std::cerr << "Skipping already processed " << dedupKey.str() << std::endl;
             return nullptr;
         }
 
@@ -942,8 +946,7 @@ int main(int argc, const char **argv)
         SPDLOG_DEBUG("Absolute file path: {}", file);
         Progress++;
 
-        if (it.empty() || it == "-")
-        {
+        if (it.empty() || it == "-") {
             completion_latch.count_down();
             continue;
         }

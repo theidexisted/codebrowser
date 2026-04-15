@@ -121,22 +121,19 @@ struct ProjectManager
         RefFile(const std::string &p);
         RefFile(const FileIndex &) = delete;
         ~RefFile();
-        void AppendLine_Locked(const std::string &s)
-        {
-            std::lock_guard lg(mutex_);
-            if (!contents_.empty())
-                contents_.append(1, '\n');
-            contents_.append(s);
-            // ofs_<<s;
-        }
+        void AppendLine_Locked(const std::string &s);
         // WARN only call it at last to avoid data race
         void Flush();
 
     private:
+        void VerifyChunk_Locked(const std::string &s);
+
         std::mutex mutex_;
         // static inline thread_local std::error_code error_code;
         std::string path_;
         std::string contents_;
+        bool verify_refs_ = false;
+        std::unordered_map<std::string, std::string> definition_locations_;
         // std::vector<std::string> contents_;
         //  std::ofstream ofs_;
         //  llvm::raw_fd_ostream ofs_;

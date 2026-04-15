@@ -27,10 +27,30 @@
 #include <llvm/ADT/SmallString.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Support/Process.h>
 
 #include "spdlog/fmt/fmt.h"
 #include "spdlog/fmt/ranges.h"
 #include "spdlog/spdlog.h"
+#include <cassert>
+
+namespace {
+
+llvm::StringRef extractAttr(llvm::StringRef line, llvm::StringRef name)
+{
+    std::string needle = (name + "='").str();
+    size_t start = line.find(needle);
+    if (start == llvm::StringRef::npos)
+        return {};
+    start += needle.size();
+    size_t end = line.find('\'', start);
+    if (end == llvm::StringRef::npos)
+        return {};
+    return line.substr(start, end - start);
+}
+
+}
+
 ProjectManager::ProjectManager(std::string outputPrefix, std::string _dataPath)
     : outputPrefix(outputPrefix)
     , dataPath(std::move(_dataPath))
@@ -150,6 +170,7 @@ ProjectManager::DirCreator::DirCreator(const std::string &outputPrefix)
 
 ProjectManager::RefFile::RefFile(const std::string &p)
     : path_(p)
+    , verify_refs_(llvm::sys::Process::GetEnv("CODEBROWSER_VERIFY_REFS").value_or("") == "1")
 {
     SPDLOG_DEBUG("Init of a ref file:{}", p);
 }
@@ -158,6 +179,51 @@ ProjectManager::RefFile::~RefFile()
 {
     Flush();
 }
+
+void ProjectManager::RefFile::AppendLine_Locked(const std::string &s)
+{
+    std::lock_guard lg(mutex_);
+    if (verify_refs_) {
+        VerifyChunk_Locked(s);
+    }
+    if (!contents_.empty())
+        contents_.append(1, '\n');
+    contents_.append(s);
+}
+
+void ProjectManager::RefFile::VerifyChunk_Locked(const std::string &s)
+{
+    llvm::StringRef chunk(s);
+    while (!chunk.empty()) {
+        auto split = chunk.split('\n');
+        llvm::StringRef line = split.first.trim();
+        chunk = split.second;
+
+        if (!line.startswith("<def "))
+            continue;
+
+        llvm::StringRef file = extractAttr(line, "f");
+        llvm::StringRef lineNo = extractAttr(line, "l");
+        llvm::StringRef endLineNo = extractAttr(line, "ll");
+        if (file.empty() || lineNo.empty())
+            continue;
+
+        std::string key = file.str();
+        std::string location = lineNo.str();
+        if (!endLineNo.empty()) {
+            location += "-";
+            location += endLineNo.str();
+        }
+
+        auto [it, inserted] = definition_locations_.try_emplace(key, location);
+        if (!inserted && it->second != location) {
+            SPDLOG_ERROR("Conflicting definition locations in {} for {}: {} vs {}. line={}", path_,
+                         key, it->second, location, line.str());
+            assert(!"Conflicting definition locations emitted into a ref file");
+        }
+    }
+}
+
 void ProjectManager::RefFile::Flush()
 {
     SPDLOG_DEBUG("Flush of a ref file:{}", path_);

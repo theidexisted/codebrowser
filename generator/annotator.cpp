@@ -669,11 +669,15 @@ void Annotator::registerReference(clang::NamedDecl *decl, clang::SourceRange ran
         if (sm.getFileID(spel1) != FID || sm.getFileID(spel2) != FID) {
 
             if (visibility == Visibility::Global) {
+                clang::SourceRange storedRange = range;
+                if (declType < Use && spel1.isFileID() && spel2.isFileID()) {
+                    storedRange = { spel1, spel2 };
+                }
                 if (usedContext && typeText.empty() && declType >= Use) {
                     typeText = getContextStr(usedContext);
                 }
-                addReference(getReferenceAndTitle(decl).first, range, type, declType, typeText,
-                             decl);
+                addReference(getReferenceAndTitle(decl).first, storedRange, type, declType,
+                             typeText, decl);
             }
             return;
         }
