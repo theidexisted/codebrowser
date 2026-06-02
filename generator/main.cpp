@@ -128,6 +128,8 @@ Simple generation without compile command or project (compile command specified 
 
 With a project
   codebrowser_generator -b $PWD/build -a -p codebrowser:$PWD -o ~/public_html/code
+
+This version is patched with multiple threads.
 )");
 
 
@@ -401,6 +403,7 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
 
     command.push_back("-Qunused-arguments");
     command.push_back("-Wno-unknown-warning-option");
+    command.push_back("-fms-extensions");
     SPDLOG_DEBUG("Start proceedCommand with adjusted: command: {}", command);
 
     llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> VFS(
@@ -452,6 +455,8 @@ buildCompilerInvocation(const std::string &main, std::vector<const char *> args,
         const char *arr[] = { "-target", target_and_mode.TargetPrefix.c_str() };
         args.insert(args.begin() + 1, std::begin(arr), std::end(arr));
     }
+
+    args.push_back("-fms-extensions");
 
     IntrusiveRefCntPtr<DiagnosticsEngine> diags(
         CompilerInstance::createDiagnostics(new DiagnosticOptions, new IgnoringDiagConsumer, true));
