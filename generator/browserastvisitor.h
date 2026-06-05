@@ -224,10 +224,11 @@ struct BrowserASTVisitor : clang::RecursiveASTVisitor<BrowserASTVisitor>
 
     bool VisitTypedefTypeLoc(clang::TypedefTypeLoc TL)
     {
+        auto *decl = TL.getDecl();
         clang::SourceRange range = TL.getSourceRange();
         annotator.registerReference(
-            TL.getTypedefNameDecl(), range, Annotator::Typedef, Annotator::Use,
-            annotator.getTypeRef(TL.getTypedefNameDecl()->getUnderlyingType()), currentContext);
+            decl, range, Annotator::Typedef, Annotator::Use,
+            annotator.getTypeRef(decl->getUnderlyingType()), currentContext);
         return true;
     }
 
@@ -258,18 +259,24 @@ struct BrowserASTVisitor : clang::RecursiveASTVisitor<BrowserASTVisitor>
         if (!NNS)
             return true;
 
-        switch (NNS.getNestedNameSpecifier()->getKind()) {
-        case clang::NestedNameSpecifier::Namespace:
-            if (NNS.getNestedNameSpecifier()->getAsNamespace()->isAnonymousNamespace())
-                break;
-            annotator.registerReference(NNS.getNestedNameSpecifier()->getAsNamespace(),
-                                        NNS.getSourceRange(), Annotator::Namespace);
-            return true; // skip prefixes
-        case clang::NestedNameSpecifier::NamespaceAlias:
-            annotator.registerReference(
-                NNS.getNestedNameSpecifier()->getAsNamespaceAlias()->getAliasedNamespace(),
-                NNS.getSourceRange(), Annotator::Namespace);
-            return true; // skip prefixes
+        const clang::NestedNameSpecifier spec = NNS.getNestedNameSpecifier();
+        switch (spec.getKind()) {
+        case clang::NestedNameSpecifier::Kind::Namespace: {
+            const auto *ns = spec.getAsNamespaceAndPrefix().Namespace;
+            if (const auto *alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(ns)) {
+                annotator.registerReference(alias->getAliasedNamespace(), NNS.getSourceRange(),
+                                            Annotator::Namespace);
+                return true; // skip prefixes
+            }
+            if (const auto *decl = llvm::dyn_cast<clang::NamespaceDecl>(ns)) {
+                if (decl->isAnonymousNamespace())
+                    break;
+                annotator.registerReference(const_cast<clang::NamespaceDecl *>(decl),
+                                            NNS.getSourceRange(), Annotator::Namespace);
+                return true;
+            }
+            break;
+        }
         default:
             break;
         }

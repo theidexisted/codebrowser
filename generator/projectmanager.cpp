@@ -106,7 +106,7 @@ ProjectInfo *ProjectManager::projectForFile(llvm::StringRef filename)
         if (source_path.size() < match_length) {
             continue;
         }
-        if (filename.startswith(source_path)) {
+        if (filename.starts_with(source_path)) {
             result = &it;
             match_length = source_path.size();
         }
@@ -199,7 +199,7 @@ void ProjectManager::RefFile::VerifyChunk_Locked(const std::string &s)
         llvm::StringRef line = split.first.trim();
         chunk = split.second;
 
-        if (!line.startswith("<def "))
+        if (!line.starts_with("<def "))
             continue;
 
         llvm::StringRef file = extractAttr(line, "f");

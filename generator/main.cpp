@@ -368,7 +368,7 @@ static bool proceedCommand_old(std::vector<std::string> command, llvm::StringRef
         previousIsDashI = false;
         if (A.empty())
             continue;
-        if (llvm::StringRef(A).startswith("-I") && A[2] != '/') {
+        if (llvm::StringRef(A).starts_with("-I") && A[2] != '/') {
             A = "-I" % Directory % "/" % llvm::StringRef(A).substr(2);
             continue;
         }
@@ -458,8 +458,9 @@ buildCompilerInvocation(const std::string &main, std::vector<const char *> args,
 
     args.push_back("-fms-extensions");
 
+    DiagnosticOptions diagOpts;
     IntrusiveRefCntPtr<DiagnosticsEngine> diags(
-        CompilerInstance::createDiagnostics(new DiagnosticOptions, new IgnoringDiagConsumer, true));
+        CompilerInstance::createDiagnostics(*vfs, diagOpts, new IgnoringDiagConsumer, true));
 #if LLVM_VERSION_MAJOR < 12 // llvmorg-12-init-5498-g257b29715bb
     driver::Driver d(args[0], llvm::sys::getDefaultTargetTriple(), *diags, vfs);
 #else
@@ -567,13 +568,8 @@ bool index(const std::string &main, const std::vector<const char *> &args,
         return false;
         // -fparse-all-comments enables documentation in the indexer and in
         // code completion.
-#if LLVM_VERSION_MAJOR >= 18
-    ci->getLangOpts().CommentOpts.ParseAllComments = g_config->index.comments > 1;
+    ci->getLangOpts().CommentOpts.ParseAllComments = true;
     ci->getLangOpts().RetainCommentsFromSystemHeaders = true;
-#else
-    ci->getLangOpts()->CommentOpts.ParseAllComments = true;
-    ci->getLangOpts()->RetainCommentsFromSystemHeaders = true;
-#endif
     /*
       std::string buf = wfiles->getContent(main);
       std::vector<std::unique_ptr<llvm::MemoryBuffer>> bufs;
@@ -584,23 +580,17 @@ bool index(const std::string &main, const std::vector<const char *> &args,
         }
     */
     IndexDiags dc;
-    auto clang = std::make_unique<CompilerInstance>(pch);
-    clang->setInvocation(std::move(ci));
+    auto clang = std::make_unique<CompilerInstance>(ci, pch);
     clang->createDiagnostics(&dc, false);
     clang->getDiagnostics().setIgnoreAllWarnings(true);
-    clang->setTarget(
-        TargetInfo::CreateTargetInfo(clang->getDiagnostics(), clang->getInvocation().TargetOpts));
+    clang->setTarget(TargetInfo::CreateTargetInfo(clang->getDiagnostics(),
+                                                  clang->getInvocation().getTargetOpts()));
     if (!clang->hasTarget())
         return {};
     clang->getPreprocessorOpts().RetainRemappedFileBuffers = true;
-#if LLVM_VERSION_MAJOR >= 9 // rC357037
-    clang->createFileManager(fs);
-#else
     clang->setVirtualFileSystem(fs);
     clang->createFileManager();
-#endif
-    clang->setSourceManager(
-        new SourceManager(clang->getDiagnostics(), clang->getFileManager(), true));
+    clang->createSourceManager();
 
 /*
   IndexParam param(*vfs, no_linkage);
@@ -697,7 +687,7 @@ static bool proceedCommand(std::vector<std::string> command, llvm::StringRef Dir
         previousIsDashI = false;
         if (A.empty())
             continue;
-        if (llvm::StringRef(A).startswith("-I") && A[2] != '/') {
+        if (llvm::StringRef(A).starts_with("-I") && A[2] != '/') {
             A = "-I" % Directory % "/" % llvm::StringRef(A).substr(2);
             continue;
         }
@@ -876,12 +866,12 @@ int main(int argc, const char **argv)
         // A directory was passed, process all the files in that directory
         llvm::SmallString<128> DirName;
         llvm::sys::path::native(Sources.front(), DirName);
-        while (DirName.endswith("/"))
+        while (DirName.ends_with("/"))
             DirName.pop_back();
         std::error_code EC;
         for (llvm::sys::fs::recursive_directory_iterator it(DirName.str(), EC), DirEnd;
              it != DirEnd && !EC; it.increment(EC)) {
-            if (llvm::sys::path::filename(it->path()).startswith(".")) {
+            if (llvm::sys::path::filename(it->path()).starts_with(".")) {
                 it.no_push();
                 continue;
             }
@@ -1053,7 +1043,7 @@ int main(int argc, const char **argv)
             SPDLOG_ERROR("NotInDB: final compileCommandsForFile: {}", command);
             std::replace(command.begin(), command.end(), fileForCommands, it);
             SPDLOG_ERROR("NotInDB: final after replace compileCommandsForFile: {}", command);
-            if (llvm::StringRef(file).endswith(".qdoc")) {
+            if (llvm::StringRef(file).ends_with(".qdoc")) {
                 command.insert(command.begin() + 1, "-xc++");
                 // include the header for this .qdoc file
                 command.push_back("-include");

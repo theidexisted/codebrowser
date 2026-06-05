@@ -82,6 +82,10 @@ public:
 #endif
                             llvm::StringRef SearchPath, llvm::StringRef RelativePath,
                             const clang::Module *Imported
+#if CLANG_VERSION_MAJOR >= 22
+                            ,
+                            bool ModuleImported
+#endif
 #if CLANG_VERSION_MAJOR >= 7
                             ,
                             clang::SrcMgr::CharacteristicKind

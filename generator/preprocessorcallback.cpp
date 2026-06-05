@@ -92,8 +92,8 @@ void PreprocessorCallback::MacroExpands(const clang::Token &MacroNameTok, MyMacr
 
     // Temporarily change the diagnostics object so that we ignore any generated
     // diagnostics from this pass.
-    clang::DiagnosticsEngine TmpDiags(PP.getDiagnostics().getDiagnosticIDs(),
-                                      &PP.getDiagnostics().getDiagnosticOptions(),
+    auto &diagOpts = PP.getDiagnostics().getDiagnosticOptions();
+    clang::DiagnosticsEngine TmpDiags(PP.getDiagnostics().getDiagnosticIDs(), diagOpts,
                                       new clang::IgnoringDiagConsumer);
 
     disabled = true;
@@ -277,6 +277,9 @@ void PreprocessorCallback::InclusionDirective(
     const clang::FileEntry *File,
 #endif
     llvm::StringRef SearchPath, llvm::StringRef RelativePath, const clang::Module *Imported
+#if CLANG_VERSION_MAJOR >= 22
+    , bool ModuleImported
+#endif
 #if CLANG_VERSION_MAJOR >= 7
     , clang::SrcMgr::CharacteristicKind
 #endif
